@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NanoOrbit — Test auth</title>
+  <style>
+    :root {
+      --bg: #0b0f1a;
+      --surface: #141b2d;
+      --border: #243049;
+      --text: #e8edf7;
+      --muted: #8b9bb8;
+      --accent: #4f8cff;
+      --accent-hover: #3d78e8;
+      --success: #3dd68c;
+      --error: #ff6b6b;
+      --warn: #fbbf24;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top, #1a2744 0%, var(--bg) 55%);
+      color: var(--text);
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.75rem;
+      font-weight: 600;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .card h2 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    select, input[type="password"] {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 1rem;
+    }
+
+    select:focus, input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    button {
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover { background: var(--accent-hover); }
+
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    button.secondary:hover { background: rgba(255, 255, 255, 0.05); }
+
+    button.danger {
+      background: rgba(255, 107, 107, 0.15);
+      color: var(--error);
+      border: 1px solid rgba(255, 107, 107, 0.35);
+    }
+
+    button.danger:hover { background: rgba(255, 107, 107, 0.25); }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .dot.disconnected { background: var(--error); }
+
+    .session-info {
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .session-info strong { color: var(--text); }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: rgba(79, 140, 255, 0.2);
+      color: var(--accent);
+      margin-left: 0.35rem;
+    }
+
+    .badge.back { background: rgba(61, 214, 140, 0.2); color: var(--success); }
+    .badge.front-only { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+
+    pre {
+      margin: 0;
+      padding: 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #c5d0e6;
+      min-height: 4rem;
+    }
+
+    .log-meta {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .accounts-hint {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .accounts-hint code {
+      background: var(--bg);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>NanoOrbit — Test connexion</h1>
+      <p>Interface statique pour tester <code>POST /api/auth/login</code>, <code>GET /api/auth/me</code> et <code>POST /api/auth/logout</code>.</p>
+    </header>
+
+    <section class="card">
+      <h2>Connexion</h2>
+      <form id="login-form">
+        <label for="username">Compte MySQL (Phase 4)</label>
+        <select id="username" name="username" required>
+          <option value="analyste_data">analyste_data — analyste (front seul)</option>
+          <option value="operateur_sat">operateur_sat — opérateur (front + back partiel)</option>
+          <option value="resp_mission">resp_mission — responsable (front + back partiel)</option>
+          <option value="admin_nano">admin_nano — admin (accès complet)</option>
+        </select>
+
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Mot de passe MySQL">
+
+        <div class="actions">
+          <button type="submit" class="primary" id="btn-login">Se connecter</button>
+          <button type="button" class="secondary" id="btn-me">Vérifier session (/me)</button>
+          <button type="button" class="danger" id="btn-logout">Déconnexion</button>
+        </div>
+      </form>
+
+      <div class="accounts-hint">
+        Comptes attendus du sujet : <code>analyste_data</code>, <code>operateur_sat</code>, <code>resp_mission</code>, <code>admin_nano</code>.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Session</h2>
+      <div class="status">
+        <span class="dot disconnected" id="status-dot"></span>
+        <span id="status-label">Non connecté</span>
+      </div>
+      <div class="session-info" id="session-info">Aucune session active.</div>
+    </section>
+
+    <section class="card">
+      <h2>Dernière réponse API</h2>
+      <pre id="response-log">—</pre>
+      <div class="log-meta" id="log-meta"></div>
+    </section>
+  </div>
+
+  <script>
+    const API = "/api/auth";
+
+    const els = {
+      form: document.getElementById("login-form"),
+      username: document.getElementById("username"),
+      password: document.getElementById("password"),
+      btnMe: document.getElementById("btn-me"),
+      btnLogout: document.getElementById("btn-logout"),
+      statusDot: document.getElementById("status-dot"),
+      statusLabel: document.getElementById("status-label"),
+      sessionInfo: document.getElementById("session-info"),
+      responseLog: document.getElementById("response-log"),
+      logMeta: document.getElementById("log-meta"),
+    };
+
+    function roleBadge(role, access) {
+      if (!role) return "";
+      const back = access?.back_office;
+      const cls = back ? "badge back" : "badge front-only";
+      const label = back ? "back-office" : "front seul";
+      return `<span class="badge">${role}</span><span class="${cls}">${label}</span>`;
+    }
+
+    function updateSessionUI(data, connected) {
+      els.statusDot.className = "dot " + (connected ? "connected" : "disconnected");
+      els.statusLabel.textContent = connected ? "Connecté" : "Non connecté";
+
+      if (connected && data) {
+        els.sessionInfo.innerHTML =
+          `<strong>${data.username}</strong> ${roleBadge(data.role, data.access)}<br>` +
+          `Front-office : ${data.access?.front_office ? "oui" : "non"} · ` +
+          `Back-office : ${data.access?.back_office ? "oui" : "non"}`;
+      } else {
+        els.sessionInfo.textContent = "Aucune session active.";
+      }
+    }
+
+    function showResponse(method, url, status, body) {
+      els.responseLog.textContent = JSON.stringify(body, null, 2);
+      els.logMeta.textContent = `${method} ${url} → HTTP ${status}`;
+    }
+
+    async function apiCall(method, path, body) {
+      const url = API + path;
+      const options = {
+        method,
+        credentials: "include",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      };
+
+      const res = await fetch(url, options);
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        data = { error: "Réponse non JSON" };
+      }
+
+      showResponse(method, url, res.status, data);
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    els.form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const { ok, data } = await apiCall("POST", "/login", {
+        username: els.username.value,
+        password: els.password.value,
+      });
+      updateSessionUI(data, ok);
+      if (ok) els.password.value = "";
+    });
+
+    els.btnMe.addEventListener("click", async () => {
+      const { ok, data } = await apiCall("GET", "/me");
+      updateSessionUI(data, ok);
+    });
+
+    els.btnLogout.addEventListener("click", async () => {
+      const { ok, data } = await apiCall("POST", "/logout");
+      updateSessionUI(null, false);
+      if (!ok) updateSessionUI(null, false);
+    });
+
+    apiCall("GET", "/me").then(({ ok, data }) => updateSessionUI(data, ok));
+  </script>
+</body>
+</html>

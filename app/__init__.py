@@ -1,6 +1,7 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
+from app.auth import auth_bp
 from app.config import Config
 from app import db
 
@@ -10,11 +11,11 @@ def create_app(config_class=Config):
 
     CORS(app, supports_credentials=True)
 
-    if not db.test_connection(app.config['MYSQL_USER'], app.config['MYSQL_PASSWORD']):
-        raise Exception("Failed to connect to MySQL database")
-    else:
-        print("Connected to MySQL database")
-        print(db.query(app.config['MYSQL_USER'], app.config['MYSQL_PASSWORD'], "SELECT 1"))
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+
+    @app.get("/")
+    def index():
+        return send_from_directory(app.static_folder, "index.html")
 
     # @app.errorhandler(Exception)
     # def handle_exception(error):

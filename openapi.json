@@ -1,0 +1,1061 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "NanoOrbit API",
+    "description": "API REST Flask pour le CubeSat Earth Observation System — Phase 5 (front-office consultation, back-office administration).\n\n**Niveau** : à indiquer dans l'en-tête du code (1 Découverte / 2 Autonome / 3 Expert).\n\n**Authentification** : Option A — connexion MySQL réelle ; le profil est détecté via `information_schema` après login. La session Flask conserve `username`, `password` (chiffré ou réutilisé via pool par requête selon implémentation) et `role`.\n\n**Profils et accès**\n| Profil MySQL | Front-office | Back-office | Actions back |\n|--------------|--------------|-------------|--------------|\n| `analyste_data` | Complet (lecture) | Refusé | — |\n| `operateur_sat` | Complet | Partiel | BO-01, BO-02, BO-05 |\n| `resp_mission` | Complet | Partiel | BO-03 |\n| `admin_nano` | Complet | Complet | Toutes |\n\n**Sources SQL (Phase 3)** : vues `VUE_SATELLITES_OPERATIONNELS`, `VUE_BILAN_COMMUNICATIONS`, `VUE_TABLEAU_DE_BORD_MISSIONS`, `VUE_ALERTES_INSTRUMENTS` ; tables `SATELLITE`, `FENETRE_COM`, `PARTICIPATION`, `EMBARQUEMENT` ; procédure `desorbiter_satellite()` (Phase 4.5).",
+    "version": "1.0.0",
+    "contact": {
+      "name": "NanoOrbit — TP Bases de données"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Développement local (`python run.py`)"
+    }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Connexion, session et profil utilisateur" },
+    { "name": "Front-office", "description": "Consultation en lecture seule (FO-01 à FO-04, bonus FO-05)" },
+    { "name": "Back-office — lecture", "description": "Données pour formulaires et listes d'administration" },
+    { "name": "Back-office — écriture", "description": "Actions métier protégées par profil (BO-01 à BO-04, bonus BO-05)" }
+  ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Connexion (Option A — MySQL)",
+        "description": "Tente une connexion à `nanoOrbit_db` avec les identifiants saisis. En cas de succès, crée une session et détecte le rôle (`operateur`, `analyste`, `responsable`, `admin`) à partir du compte MySQL.\n\nRedirection applicative attendue :\n- `analyste` → front-office uniquement ;\n- `operateur`, `responsable`, `admin` → accès back-office selon droits Phase 4.",
+        "operationId": "authLogin",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" },
+              "examples": {
+                "analyste": {
+                  "summary": "Analyste (front seul)",
+                  "value": { "username": "analyste_data", "password": "********" }
+                },
+                "operateur": {
+                  "summary": "Opérateur satellite",
+                  "value": { "username": "operateur_sat", "password": "********" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connexion réussie",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Cookie de session Flask",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthSession" }
+              }
+            }
+          },
+          "401": {
+            "description": "Identifiants invalides ou connexion MySQL refusée",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "error": "Identifiants invalides" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Déconnexion",
+        "operationId": "authLogout",
+        "responses": {
+          "200": {
+            "description": "Session détruite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "message": { "type": "string", "example": "Déconnecté" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Session courante",
+        "description": "Retourne le profil connecté et les droits d'accès (front / back).",
+        "operationId": "authMe",
+        "responses": {
+          "200": {
+            "description": "Utilisateur authentifié",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthSession" }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/satellites": {
+      "get": {
+        "tags": ["Front-office"],
+        "summary": "FO-01 — Satellites opérationnels",
+        "description": "Écran tableau de bord des satellites opérationnels.\n\n**SQL** : `SELECT * FROM VUE_SATELLITES_OPERATIONNELS`\n\nIndicateur visuel côté client selon le format (1U / 3U / 6U / 12U).",
+        "operationId": "getSatellitesOperationnels",
+        "responses": {
+          "200": {
+            "description": "Liste des satellites opérationnels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SatelliteOperationnel" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/communications": {
+      "get": {
+        "tags": ["Front-office"],
+        "summary": "FO-02 — Bilan des communications par satellite",
+        "description": "Bilan par satellite ; le satellite le plus actif est en tête de liste.\n\n**SQL** : `SELECT * FROM VUE_BILAN_COMMUNICATIONS ORDER BY volume_total DESC`",
+        "operationId": "getBilanCommunications",
+        "responses": {
+          "200": {
+            "description": "Bilan trié par volume total décroissant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/BilanCommunication" }
+                    },
+                    "satellite_plus_actif": {
+                      "description": "Premier élément (volume total max) — à mettre en évidence côté UI",
+                      "$ref": "#/components/schemas/BilanCommunication"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/missions": {
+      "get": {
+        "tags": ["Front-office"],
+        "summary": "FO-03 — Tableau de bord des missions",
+        "description": "Missions actives avec indicateur « sous-dotée » si satellites opérationnels < participants.\n\n**SQL** : `SELECT * FROM VUE_TABLEAU_DE_BORD_MISSIONS`",
+        "operationId": "getTableauBordMissions",
+        "responses": {
+          "200": {
+            "description": "Missions actives",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/MissionTableauBord" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/alertes": {
+      "get": {
+        "tags": ["Front-office"],
+        "summary": "FO-04 — Alertes instruments",
+        "description": "Instruments en état dégradé ou hors service ; compteur d'alertes CRITIQUE en en-tête de page.\n\n**SQL** : `SELECT * FROM VUE_ALERTES_INSTRUMENTS ORDER BY priorite DESC`",
+        "operationId": "getAlertesInstruments",
+        "responses": {
+          "200": {
+            "description": "Liste des alertes et compteur critique",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "compteur_critique": {
+                      "type": "integer",
+                      "description": "Nombre d'alertes de priorité CRITIQUE"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/AlerteInstrument" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/fenetres/historique": {
+      "get": {
+        "tags": ["Front-office"],
+        "summary": "FO-05 (bonus) — Historique des fenêtres de communication",
+        "description": "Jointure `FENETRE_COM` ↔ `SATELLITE` ↔ `STATION_SOL` (requête R03 Phase 3). Tri par date de début décroissante.",
+        "operationId": "getHistoriqueFenetres",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "query",
+            "schema": { "type": "integer" },
+            "description": "Filtrer par satellite"
+          },
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["Réalisée", "Planifiée", "Échouée"]
+            },
+            "description": "Filtrer par statut de la fenêtre"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historique filtré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/FenetreHistorique" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/back/satellites": {
+      "get": {
+        "tags": ["Back-office — lecture"],
+        "summary": "Liste satellites (tous statuts) — BO-01 / BO-04",
+        "description": "Alimente les écrans de modification de statut et de désorbitation.\n\n**SQL suggéré** : `SELECT id_satellite, nom, statut FROM SATELLITE ORDER BY nom`",
+        "operationId": "backListSatellites",
+        "responses": {
+          "200": {
+            "description": "Satellites avec statut actuel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SatelliteStatut" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/back/satellites/operationnels": {
+      "get": {
+        "tags": ["Back-office — lecture"],
+        "summary": "Satellites opérationnels (listes déroulantes)",
+        "description": "Pour BO-02 (planifier fenêtre) et BO-03 (assignation mission).\n\n**SQL** : `SELECT id_satellite, nom FROM VUE_SATELLITES_OPERATIONNELS` ou équivalent.",
+        "operationId": "backListSatellitesOperationnels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id_satellite": { "type": "integer" },
+                      "nom": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" }
+        }
+      }
+    },
+    "/api/back/stations/actives": {
+      "get": {
+        "tags": ["Back-office — lecture"],
+        "summary": "Stations au sol actives — BO-02",
+        "description": "Liste déroulante des stations actives pour planification de fenêtre.",
+        "operationId": "backListStationsActives",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id_station": { "type": "integer" },
+                      "nom": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" }
+        }
+      }
+    },
+    "/api/back/missions/actives": {
+      "get": {
+        "tags": ["Back-office — lecture"],
+        "summary": "Missions actives (non terminées) — BO-03",
+        "description": "Missions éligibles à une nouvelle participation.",
+        "operationId": "backListMissionsActives",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id_mission": { "type": "integer" },
+                      "nom": { "type": "string" },
+                      "zone_cible": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" }
+        }
+      }
+    },
+    "/api/back/satellites/{id_satellite}/instruments": {
+      "get": {
+        "tags": ["Back-office — lecture"],
+        "summary": "BO-05 (bonus) — Instruments embarqués d'un satellite",
+        "operationId": "backListInstrumentsSatellite",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/InstrumentEmbarque" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" }
+        }
+      }
+    },
+    "/api/satellites/{id_satellite}/statut": {
+      "post": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-01 — Modifier le statut d'un satellite",
+        "description": "Profils autorisés : `operateur_sat`, `admin_nano`.\n\n**SQL** : `UPDATE SATELLITE SET statut = ? WHERE id_satellite = ?`",
+        "operationId": "updateSatelliteStatut",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateStatutRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mise à jour confirmée",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessMessage" },
+                "example": { "message": "Statut du satellite mis à jour." }
+              }
+            }
+          },
+          "400": {
+            "description": "Statut invalide ou satellite introuvable",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": {
+            "description": "Profil non autorisé (ex. resp_mission, analyste_data)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "error": "Action refusée : seuls operateur_sat et admin_nano peuvent modifier le statut d'un satellite."
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/fenetres": {
+      "post": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-02 — Planifier une fenêtre de communication",
+        "description": "Profils autorisés : `operateur_sat`, `admin_nano`.\n\n**SQL** : `INSERT INTO FENETRE_COM (...) VALUES (...)` — respecter la contrainte CHECK Phase 2 (durée 1–900 s, etc.).",
+        "operationId": "createFenetreCom",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateFenetreRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Fenêtre planifiée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessMessage" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id_fenetre": { "type": "integer" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Violation contrainte CHECK ou données invalides",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/participations": {
+      "post": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-03 — Assigner un satellite à une mission",
+        "description": "Profils autorisés : `resp_mission`, `admin_nano`.\n\nVérifier mission non terminée et absence de participation existante avant `INSERT INTO PARTICIPATION (...)`.",
+        "operationId": "createParticipation",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateParticipationRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Participation créée",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessMessage" }
+              }
+            }
+          },
+          "400": {
+            "description": "Mission terminée, participation déjà existante ou données invalides",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "examples": {
+                  "mission_terminee": {
+                    "value": { "error": "Impossible d'assigner : la mission est terminée." }
+                  },
+                  "doublon": {
+                    "value": { "error": "Ce satellite participe déjà à cette mission." }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/satellites/{id_satellite}/desorbiter": {
+      "post": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-04 — Désorbiter un satellite",
+        "description": "Profil autorisé : `admin_nano` uniquement.\n\n**Avec Phase 4.5** : `CALL desorbiter_satellite(?, @n); SELECT @n AS operations;`\n\n**Sans Phase 4.5** : `UPDATE SATELLITE SET statut = 'Désorbité' WHERE id_satellite = ?`\n\nConfirmation explicite côté client avant appel (`confirm: true`).",
+        "operationId": "desorbiterSatellite",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["confirm"],
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "description": "Doit être true après dialogue « Êtes-vous sûr ? »"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Satellite désorbité",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "fenetres_annulees": {
+                      "type": "integer",
+                      "description": "Retourné si procédure desorbiter_satellite() (Phase 4.5)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Confirmation manquante ou satellite déjà désorbité",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": {
+            "description": "Réservé à admin_nano",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "error": "Action refusée : seul admin_nano peut désorbiter un satellite."
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/embarquements": {
+      "post": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-05 (bonus) — Ajouter un instrument sur un satellite",
+        "description": "Profils : `operateur_sat`, `admin_nano`. Respect RG-I03 ; trigger T03 si Phase 4.5.",
+        "operationId": "createEmbarquement",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEmbarquementRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Instrument embarqué" },
+          "400": {
+            "description": "Instrument déjà sur un autre satellite",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" }
+        }
+      }
+    },
+    "/api/embarquements/{id_satellite}/{id_instrument}": {
+      "delete": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-05 (bonus) — Retirer un instrument d'un satellite",
+        "operationId": "deleteEmbarquement",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "id_instrument",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Embarquement supprimé" },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" }
+        }
+      },
+      "patch": {
+        "tags": ["Back-office — écriture"],
+        "summary": "BO-05 (bonus) — Modifier l'état d'un instrument embarqué",
+        "operationId": "updateEtatInstrument",
+        "parameters": [
+          {
+            "name": "id_satellite",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "id_instrument",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["etat_fonctionnement"],
+                "properties": {
+                  "etat_fonctionnement": {
+                    "type": "string",
+                    "enum": ["Nominal", "Dégradé", "Hors service"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "État mis à jour" },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Santé API (Séance 1)",
+        "description": "Vérification que l'application répond ; test DB optionnel avec compte technique ou sans auth.",
+        "operationId": "healthCheck",
+        "security": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "database": { "type": "string", "example": "nanoOrbit_db" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Session Flask signée (cookie). Obtenue via POST /api/auth/login."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Session absente ou expirée",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Authentification requise" }
+          }
+        }
+      },
+      "ForbiddenBackOffice": {
+        "description": "Profil sans accès back-office (ex. analyste_data)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Accès back-office refusé pour votre profil." }
+          }
+        }
+      },
+      "ForbiddenAction": {
+        "description": "Action métier non autorisée pour le profil connecté",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Erreur serveur ou MySQL (message explicite, pas de stack trace en production)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "SuccessMessage": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Compte MySQL Phase 4",
+            "enum": [
+              "analyste_data",
+              "operateur_sat",
+              "resp_mission",
+              "admin_nano"
+            ]
+          },
+          "password": { "type": "string", "format": "password" }
+        }
+      },
+      "AuthSession": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": ["analyste", "operateur", "responsable", "admin"],
+            "description": "Rôle applicatif dérivé du compte MySQL"
+          },
+          "access": {
+            "type": "object",
+            "properties": {
+              "front_office": { "type": "boolean", "example": true },
+              "back_office": {
+                "type": "boolean",
+                "description": "false pour analyste_data"
+              }
+            }
+          }
+        }
+      },
+      "SatelliteOperationnel": {
+        "type": "object",
+        "description": "Colonnes alignées sur VUE_SATELLITES_OPERATIONNELS (noms à adapter selon votre schéma)",
+        "properties": {
+          "id_satellite": { "type": "integer" },
+          "nom": { "type": "string" },
+          "format": {
+            "type": "string",
+            "enum": ["1U", "3U", "6U", "12U"],
+            "description": "Indicateur visuel côté UI"
+          },
+          "date_lancement": { "type": "string", "format": "date" },
+          "type_orbite": { "type": "string" },
+          "altitude_km": { "type": "number" },
+          "capacite_batterie_wh": { "type": "number" }
+        }
+      },
+      "BilanCommunication": {
+        "type": "object",
+        "description": "VUE_BILAN_COMMUNICATIONS",
+        "properties": {
+          "id_satellite": { "type": "integer" },
+          "nom_satellite": { "type": "string" },
+          "nb_fenetres_realisees": { "type": "integer" },
+          "volume_total_mo": { "type": "number" },
+          "volume_moyen_par_fenetre_mo": { "type": "number" },
+          "date_derniere_communication": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nb_stations_contactees": { "type": "integer" }
+        }
+      },
+      "MissionTableauBord": {
+        "type": "object",
+        "description": "VUE_TABLEAU_DE_BORD_MISSIONS",
+        "properties": {
+          "id_mission": { "type": "integer" },
+          "nom": { "type": "string" },
+          "zone_geographique_cible": { "type": "string" },
+          "date_debut": { "type": "string", "format": "date" },
+          "nb_satellites_participants": { "type": "integer" },
+          "nb_satellites_operationnels": { "type": "integer" },
+          "sous_dotee": {
+            "type": "boolean",
+            "description": "true si nb_satellites_operationnels < nb_satellites_participants"
+          }
+        }
+      },
+      "AlerteInstrument": {
+        "type": "object",
+        "description": "VUE_ALERTES_INSTRUMENTS",
+        "properties": {
+          "id_instrument": { "type": "integer" },
+          "nom_instrument": { "type": "string" },
+          "id_satellite": { "type": "integer" },
+          "nom_satellite": { "type": "string" },
+          "etat_fonctionnement": {
+            "type": "string",
+            "enum": ["Dégradé", "Hors service"]
+          },
+          "priorite": {
+            "type": "string",
+            "enum": ["CRITIQUE", "SURVEILLANCE"],
+            "description": "CRITIQUE → rouge, SURVEILLANCE → orange"
+          }
+        }
+      },
+      "FenetreHistorique": {
+        "type": "object",
+        "description": "FO-05 — jointure fenêtres / satellite / station",
+        "properties": {
+          "id_fenetre": { "type": "integer" },
+          "date_heure_debut": { "type": "string", "format": "date-time" },
+          "duree_secondes": { "type": "integer", "minimum": 1, "maximum": 900 },
+          "id_satellite": { "type": "integer" },
+          "nom_satellite": { "type": "string" },
+          "id_station": { "type": "integer" },
+          "nom_station": { "type": "string" },
+          "elevation_max_deg": { "type": "number" },
+          "volume_donnees_mo": { "type": "number" },
+          "statut": {
+            "type": "string",
+            "enum": ["Réalisée", "Planifiée", "Échouée"]
+          }
+        }
+      },
+      "SatelliteStatut": {
+        "type": "object",
+        "properties": {
+          "id_satellite": { "type": "integer" },
+          "nom": { "type": "string" },
+          "statut": {
+            "type": "string",
+            "enum": ["Opérationnel", "En veille", "Désorbité"]
+          }
+        }
+      },
+      "UpdateStatutRequest": {
+        "type": "object",
+        "required": ["statut"],
+        "properties": {
+          "statut": {
+            "type": "string",
+            "enum": ["Opérationnel", "En veille", "Désorbité"]
+          }
+        }
+      },
+      "CreateFenetreRequest": {
+        "type": "object",
+        "required": [
+          "id_satellite",
+          "id_station",
+          "date_heure_debut",
+          "duree_secondes",
+          "elevation_max"
+        ],
+        "properties": {
+          "id_satellite": {
+            "type": "integer",
+            "description": "Satellite opérationnel"
+          },
+          "id_station": {
+            "type": "integer",
+            "description": "Station au sol active"
+          },
+          "date_heure_debut": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duree_secondes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 900
+          },
+          "elevation_max": {
+            "type": "number",
+            "description": "Élévation maximale (degrés)"
+          },
+          "statut": {
+            "type": "string",
+            "default": "Planifiée",
+            "enum": ["Planifiée"]
+          }
+        }
+      },
+      "CreateParticipationRequest": {
+        "type": "object",
+        "required": ["id_satellite", "id_mission", "role_satellite"],
+        "properties": {
+          "id_satellite": {
+            "type": "integer",
+            "description": "Satellite opérationnel"
+          },
+          "id_mission": {
+            "type": "integer",
+            "description": "Mission active (non terminée)"
+          },
+          "role_satellite": {
+            "type": "string",
+            "description": "Rôle du satellite dans la mission (selon votre MCD)"
+          }
+        }
+      },
+      "CreateEmbarquementRequest": {
+        "type": "object",
+        "required": ["id_satellite", "id_instrument"],
+        "properties": {
+          "id_satellite": { "type": "integer" },
+          "id_instrument": { "type": "integer" },
+          "etat_fonctionnement": {
+            "type": "string",
+            "enum": ["Nominal", "Dégradé", "Hors service"],
+            "default": "Nominal"
+          }
+        }
+      },
+      "InstrumentEmbarque": {
+        "type": "object",
+        "properties": {
+          "id_instrument": { "type": "integer" },
+          "nom": { "type": "string" },
+          "type_instrument": { "type": "string" },
+          "etat_fonctionnement": {
+            "type": "string",
+            "enum": ["Nominal", "Dégradé", "Hors service"]
+          }
+        }
+      }
+    }
+  },
+  "security": [{ "sessionCookie": [] }],
+  "x-implementation-checklist": {
+    "seance_1": [
+      "GET /api/health ou SELECT 1 via pool utilisateur",
+      "POST /api/auth/login + session",
+      "GET /api/satellites (VUE_SATELLITES_OPERATIONNELS)"
+    ],
+    "seance_2": [
+      "GET /api/communications",
+      "GET /api/missions",
+      "GET /api/alertes"
+    ],
+    "seance_3": [
+      "POST /api/satellites/{id}/statut",
+      "POST /api/fenetres",
+      "POST /api/participations",
+      "POST /api/satellites/{id}/desorbiter",
+      "Messages 403 explicites pour actions interdites"
+    ],
+    "bonus": [
+      "GET /api/fenetres/historique",
+      "BO-05 embarquements",
+      "GET routes /api/back/* pour formulaires"
+    ]
+  }
+}

@@ -20,12 +20,14 @@ def _can_access_back_office(role: str) -> bool:
     return role != "analyste"
 
 def build_auth_session(username: str, role: str) -> dict:
+    can_access_backoffice = _can_access_back_office(role)
     return {
         "username": username,
         "role": role,
+        "can_access_backoffice": can_access_backoffice,
         "access": {
             "front_office": True,
-            "back_office": _can_access_back_office(role),
+            "back_office": can_access_backoffice,
         },
     }
 
@@ -40,7 +42,9 @@ def detect_role(username: str, password: str) -> str | None:
     )
     if not rows:
         return None
+
     return ROLE_MAPPING[username]
+
 
 def authenticate(username: str, password: str) -> dict | None:
     if not username or not password:
@@ -50,4 +54,5 @@ def authenticate(username: str, password: str) -> dict | None:
     role = detect_role(username, password)
     if role is None:
         return None
+
     return build_auth_session(username, role)

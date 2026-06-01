@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NanoOrbit — Test auth</title>
+  <title>NanoOrbit — Test API</title>
   <style>
     :root {
       --bg: #0b0f1a;
@@ -16,6 +16,10 @@
       --success: #3dd68c;
       --error: #ff6b6b;
       --warn: #fbbf24;
+      --format-1u: #4f8cff;
+      --format-3u: #3dd68c;
+      --format-6u: #fbbf24;
+      --format-12u: #c084fc;
     }
 
     * { box-sizing: border-box; }
@@ -30,7 +34,7 @@
     }
 
     .container {
-      max-width: 720px;
+      max-width: 1100px;
       margin: 0 auto;
     }
 
@@ -65,6 +69,18 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: var(--muted);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-header h2 {
+      margin: 0;
     }
 
     label {
@@ -174,6 +190,89 @@
     .badge.back { background: rgba(61, 214, 140, 0.2); color: var(--success); }
     .badge.front-only { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
 
+    .format-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .format-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .format-1u { background: rgba(79, 140, 255, 0.18); color: var(--format-1u); }
+    .format-1u::before { background: var(--format-1u); }
+
+    .format-3u { background: rgba(61, 214, 140, 0.18); color: var(--format-3u); }
+    .format-3u::before { background: var(--format-3u); }
+
+    .format-6u { background: rgba(251, 191, 36, 0.18); color: var(--format-6u); }
+    .format-6u::before { background: var(--format-6u); }
+
+    .format-12u { background: rgba(192, 132, 252, 0.18); color: var(--format-12u); }
+    .format-12u::before { background: var(--format-12u); }
+
+    .format-unknown { background: rgba(139, 155, 184, 0.18); color: var(--muted); }
+    .format-unknown::before { background: var(--muted); }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    th, td {
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    th {
+      background: var(--bg);
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+    .sat-count {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .empty-state, .error-state {
+      padding: 1.25rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+    }
+
+    .error-state { color: var(--error); border-color: rgba(255, 107, 107, 0.35); }
+
+    .hidden { display: none !important; }
+
     pre {
       margin: 0;
       padding: 1rem;
@@ -215,8 +314,8 @@
 <body>
   <div class="container">
     <header>
-      <h1>NanoOrbit — Test connexion</h1>
-      <p>Interface statique pour tester <code>POST /api/auth/login</code>, <code>GET /api/auth/me</code> et <code>POST /api/auth/logout</code>.</p>
+      <h1>NanoOrbit — Test API</h1>
+      <p>Connexion, session et consultation <code>GET /api/satellites</code> (<code>VUE_SATELLITES_OPERATIONNELS</code>).</p>
     </header>
 
     <section class="card">
@@ -254,6 +353,19 @@
       <div class="session-info" id="session-info">Aucune session active.</div>
     </section>
 
+    <section class="card hidden" id="satellites-section">
+      <div class="card-header">
+        <h2>Satellites opérationnels — FO-01</h2>
+        <div class="actions">
+          <span class="sat-count" id="sat-count"></span>
+          <button type="button" class="secondary" id="btn-satellites">Actualiser</button>
+        </div>
+      </div>
+      <div id="satellites-content">
+        <div class="empty-state">Chargement…</div>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Dernière réponse API</h2>
       <pre id="response-log">—</pre>
@@ -262,20 +374,101 @@
   </div>
 
   <script>
-    const API = "/api/auth";
-
     const els = {
       form: document.getElementById("login-form"),
       username: document.getElementById("username"),
       password: document.getElementById("password"),
       btnMe: document.getElementById("btn-me"),
       btnLogout: document.getElementById("btn-logout"),
+      btnSatellites: document.getElementById("btn-satellites"),
       statusDot: document.getElementById("status-dot"),
       statusLabel: document.getElementById("status-label"),
       sessionInfo: document.getElementById("session-info"),
+      satellitesSection: document.getElementById("satellites-section"),
+      satellitesContent: document.getElementById("satellites-content"),
+      satCount: document.getElementById("sat-count"),
       responseLog: document.getElementById("response-log"),
       logMeta: document.getElementById("log-meta"),
     };
+
+    let isConnected = false;
+
+    const SATELLITE_COLUMNS = [
+      { key: "id_satellite", label: "ID", fallback: ["id"] },
+      { key: "nom", label: "Nom", fallback: ["nom_satellite"] },
+      { key: "format", label: "Format", fallback: ["format_cubesat"] },
+      { key: "date_lancement", label: "Lancement", fallback: ["date_lancement_satellite"] },
+      { key: "type_orbite", label: "Orbite", fallback: ["type_orbite_satellite"] },
+      { key: "altitude_km", label: "Altitude (km)", fallback: ["altitude"] },
+      { key: "capacite_batterie_wh", label: "Batterie (Wh)", fallback: ["capacite_batterie"] },
+    ];
+
+    function pickField(row, column) {
+      if (row[column.key] != null && row[column.key] !== "") return row[column.key];
+      for (const alt of column.fallback || []) {
+        if (row[alt] != null && row[alt] !== "") return row[alt];
+      }
+      const lower = column.key.toLowerCase();
+      const match = Object.keys(row).find((k) => k.toLowerCase() === lower);
+      return match ? row[match] : "—";
+    }
+
+    function formatBadge(value) {
+      const normalized = String(value ?? "").trim().toUpperCase();
+      const map = {
+        "1U": "format-1u",
+        "3U": "format-3u",
+        "6U": "format-6u",
+        "12U": "format-12u",
+      };
+      const cls = map[normalized] || "format-unknown";
+      const label = normalized || "—";
+      return `<span class="format-badge ${cls}">${label}</span>`;
+    }
+
+    function formatCell(column, value) {
+      if (column.key === "format") return formatBadge(value);
+      if (value == null || value === "") return "—";
+      if (column.key.includes("date") && typeof value === "string") {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          return d.toLocaleDateString("fr-FR");
+        }
+      }
+      return value;
+    }
+
+    function renderSatellites(rows) {
+      if (!Array.isArray(rows) || rows.length === 0) {
+        els.satellitesContent.innerHTML = '<div class="empty-state">Aucun satellite opérationnel.</div>';
+        els.satCount.textContent = "0 satellite";
+        return;
+      }
+
+      const head = SATELLITE_COLUMNS.map((c) => `<th>${c.label}</th>`).join("");
+      const body = rows.map((row) => {
+        const cells = SATELLITE_COLUMNS.map((col) => {
+          const value = pickField(row, col);
+          return `<td>${formatCell(col, value)}</td>`;
+        }).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+
+      els.satellitesContent.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr>${head}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      `;
+      els.satCount.textContent = `${rows.length} satellite${rows.length > 1 ? "s" : ""}`;
+    }
+
+    function renderSatellitesError(message) {
+      els.satellitesContent.innerHTML = `<div class="error-state">${message}</div>`;
+      els.satCount.textContent = "";
+    }
 
     function roleBadge(role, access) {
       if (!role) return "";
@@ -285,9 +478,19 @@
       return `<span class="badge">${role}</span><span class="${cls}">${label}</span>`;
     }
 
+    function setConnected(connected) {
+      isConnected = connected;
+      els.satellitesSection.classList.toggle("hidden", !connected);
+      if (!connected) {
+        els.satellitesContent.innerHTML = '<div class="empty-state">Connectez-vous pour afficher les satellites.</div>';
+        els.satCount.textContent = "";
+      }
+    }
+
     function updateSessionUI(data, connected) {
       els.statusDot.className = "dot " + (connected ? "connected" : "disconnected");
       els.statusLabel.textContent = connected ? "Connecté" : "Non connecté";
+      setConnected(connected);
 
       if (connected && data) {
         els.sessionInfo.innerHTML =
@@ -304,8 +507,8 @@
       els.logMeta.textContent = `${method} ${url} → HTTP ${status}`;
     }
 
-    async function apiCall(method, path, body) {
-      const url = API + path;
+    async function apiCall(basePath, method, path, body) {
+      const url = basePath + path;
       const options = {
         method,
         credentials: "include",
@@ -325,28 +528,52 @@
       return { ok: res.ok, status: res.status, data };
     }
 
+    async function loadSatellites() {
+      if (!isConnected) return;
+
+      els.satellitesContent.innerHTML = '<div class="empty-state">Chargement…</div>';
+      const { ok, status, data } = await apiCall("/api", "GET", "/satellites");
+
+      if (ok && Array.isArray(data)) {
+        renderSatellites(data);
+      } else if (status === 401) {
+        updateSessionUI(null, false);
+        renderSatellitesError("Session expirée — reconnectez-vous.");
+      } else {
+        renderSatellitesError(data?.error || "Impossible de charger les satellites.");
+      }
+    }
+
+    async function refreshSession() {
+      const { ok, data } = await apiCall("/api/auth", "GET", "/me");
+      updateSessionUI(data, ok);
+      if (ok) await loadSatellites();
+      return ok;
+    }
+
     els.form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const { ok, data } = await apiCall("POST", "/login", {
+      const { ok, data } = await apiCall("/api/auth", "POST", "/login", {
         username: els.username.value,
         password: els.password.value,
       });
       updateSessionUI(data, ok);
-      if (ok) els.password.value = "";
+      if (ok) {
+        els.password.value = "";
+        await loadSatellites();
+      }
     });
 
-    els.btnMe.addEventListener("click", async () => {
-      const { ok, data } = await apiCall("GET", "/me");
-      updateSessionUI(data, ok);
-    });
+    els.btnMe.addEventListener("click", refreshSession);
+
+    els.btnSatellites.addEventListener("click", loadSatellites);
 
     els.btnLogout.addEventListener("click", async () => {
-      const { ok, data } = await apiCall("POST", "/logout");
+      await apiCall("/api/auth", "POST", "/logout");
       updateSessionUI(null, false);
-      if (!ok) updateSessionUI(null, false);
     });
 
-    apiCall("GET", "/me").then(({ ok, data }) => updateSessionUI(data, ok));
+    refreshSession();
   </script>
 </body>
 </html>

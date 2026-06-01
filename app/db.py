@@ -17,21 +17,17 @@ def get_connection(username: str, password: str):
 def test_connection(username: str, password: str) -> bool:
     try:
         conn = get_connection(username, password)
-        print(f"Connected to MySQL database {Config.MYSQL_DATABASE} on {Config.MYSQL_HOST}:{Config.MYSQL_PORT} as {username}")
     except Error:
         return False
 
     try:
         cursor = conn.cursor()
-        print(f"Executing query: SELECT 1")
         try:
             cursor.execute("SELECT 1")
-            print(f"Query executed successfully")
             return cursor.fetchone() is not None
         finally:
             cursor.close()
     except Error:
-        print(f"Query execution failed")
         return False
     finally:
         conn.close()

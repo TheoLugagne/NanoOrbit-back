@@ -16,10 +16,9 @@ def create_app(config_class=Config):
     CORS(
         app,
         supports_credentials=True,
-        origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
+        origins=app.config["CORS_ORIGINS"],
+        allow_headers=["Content-Type"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     )
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")

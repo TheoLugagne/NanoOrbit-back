@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "NanoOrbit API",
-    "description": "API REST Flask pour le CubeSat Earth Observation System — Phase 5 (front-office consultation, back-office administration).\n\n**Niveau** : à indiquer dans l'en-tête du code (1 Découverte / 2 Autonome / 3 Expert).\n\n**Authentification** : Option A — connexion MySQL réelle ; le profil est détecté via `information_schema` après login. La session Flask conserve `username`, `password` (chiffré ou réutilisé via pool par requête selon implémentation) et `role`.\n\n**Profils et accès**\n| Profil MySQL | Front-office | Back-office | Actions back |\n|--------------|--------------|-------------|--------------|\n| `analyste_data` | Complet (lecture) | Refusé | — |\n| `operateur_sat` | Complet | Partiel | BO-01, BO-02, BO-05 |\n| `resp_mission` | Complet | Partiel | BO-03 |\n| `admin_nano` | Complet | Complet | Toutes |\n\n**Sources SQL (Phase 3)** : vues `VUE_SATELLITES_OPERATIONNELS`, `VUE_BILAN_COMMUNICATIONS`, `VUE_TABLEAU_DE_BORD_MISSIONS`, `VUE_ALERTES_INSTRUMENTS` ; tables `SATELLITE`, `FENETRE_COM`, `PARTICIPATION`, `EMBARQUEMENT` ; procédure `desorbiter_satellite()` (Phase 4.5).",
-    "version": "1.0.0",
+    "description": "API REST Flask pour le CubeSat Earth Observation System — Phase 5 (front-office consultation, back-office administration).\n\n**Niveau** : Autonome · **Auth** : Option A (connexion MySQL réelle).\n\n**Authentification** : le profil est détecté via `information_schema` après login. La session Flask conserve `username`, `password` et `role` (rôle applicatif).\n\n**Interface de test** : page statique sur `GET /` (`app/static/index.html`).\n\n**Profils et accès**\n| Compte login | Rôle app | Front-office | Back-office | Actions back |\n|--------------|----------|--------------|-------------|--------------|\n| `analyste_data` | `analyste` | Oui | Non | — |\n| `operateur_sat` | `operateur` | Oui | Partiel | BO-01, BO-02, BO-05 |\n| `resp_mission` | `responsable` | Oui | Partiel | BO-03 |\n| `admin_nano` | `admin` | Oui | Complet | Toutes |\n\n**Schéma Phase 2 (Groupe 14)** : tables `SATELLITE`, `FENETRE_COMM`, `EMBARQUE`, `PARTICIPE`, `INSTRUMENT` (PK `ref_instrument`), `STATION_SOL` (PK `code_station`), `MISSION`. Identifiants métier en `VARCHAR` (ex. `SAT-001`, `MSN-AMA-2023`, `IR-MID-01`).\n\n**Vues Phase 3** : `VUE_SATELLITES_OPERATIONNELS`, `VUE_BILAN_COMMUNICATIONS`, `VUE_TABLEAU_DE_BORD_MISSIONS`, `VUE_ALERTES_INSTRUMENTS`.\n\n**Procédure optionnelle Phase 4.5** : `desorbiter_satellite(id, @n)`.",
+    "version": "1.1.0",
     "contact": {
       "name": "NanoOrbit — TP Bases de données"
     }
@@ -15,12 +15,32 @@
     }
   ],
   "tags": [
+    { "name": "UI", "description": "Page de test statique (navigateur)" },
     { "name": "Auth", "description": "Connexion, session et profil utilisateur" },
     { "name": "Front-office", "description": "Consultation en lecture seule (FO-01 à FO-04, bonus FO-05)" },
     { "name": "Back-office — lecture", "description": "Données pour formulaires et listes d'administration" },
     { "name": "Back-office — écriture", "description": "Actions métier protégées par profil (BO-01 à BO-04, bonus BO-05)" }
   ],
   "paths": {
+    "/": {
+      "get": {
+        "tags": ["UI"],
+        "summary": "Page de test HTML",
+        "description": "Sert `app/static/index.html` — front-office (FO-01 à FO-05) et back-office (BO-01 à BO-05) avec authentification par cookie de session.",
+        "operationId": "getTestUi",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Document HTML",
+            "content": {
+              "text/html": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": ["Auth"],
@@ -233,21 +253,21 @@
       "get": {
         "tags": ["Front-office"],
         "summary": "FO-05 (bonus) — Historique des fenêtres de communication",
-        "description": "Jointure `FENETRE_COM` ↔ `SATELLITE` ↔ `STATION_SOL` (requête R03 Phase 3). Tri par date de début décroissante.",
+        "description": "Jointure `FENETRE_COMM` ↔ `SATELLITE` ↔ `STATION_SOL`. Tri par date de début décroissante.",
         "operationId": "getHistoriqueFenetres",
         "parameters": [
           {
             "name": "id_satellite",
             "in": "query",
-            "schema": { "type": "integer" },
-            "description": "Filtrer par satellite"
+            "schema": { "type": "string", "example": "SAT-001" },
+            "description": "Filtrer par identifiant satellite (VARCHAR Phase 2)"
           },
           {
             "name": "statut",
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["Réalisée", "Planifiée", "Échouée"]
+              "enum": ["Réalisée", "Planifiée", "En cours", "Échouée"]
             },
             "description": "Filtrer par statut de la fenêtre"
           }
@@ -273,7 +293,7 @@
       "get": {
         "tags": ["Back-office — lecture"],
         "summary": "Liste satellites (tous statuts) — BO-01 / BO-04",
-        "description": "Alimente les écrans de modification de statut et de désorbitation.\n\n**SQL suggéré** : `SELECT id_satellite, nom, statut FROM SATELLITE ORDER BY nom`",
+        "description": "Alimente les écrans de modification de statut et de désorbitation.\n\n**SQL** : `SELECT id_satellite, nom_satellite AS nom, statut FROM SATELLITE ORDER BY nom_satellite`",
         "operationId": "backListSatellites",
         "responses": {
           "200": {
@@ -297,7 +317,7 @@
       "get": {
         "tags": ["Back-office — lecture"],
         "summary": "Satellites opérationnels (listes déroulantes)",
-        "description": "Pour BO-02 (planifier fenêtre) et BO-03 (assignation mission).\n\n**SQL** : `SELECT id_satellite, nom FROM VUE_SATELLITES_OPERATIONNELS` ou équivalent.",
+        "description": "Pour BO-02 (planifier fenêtre) et BO-03 (assignation mission).\n\n**SQL** : `SELECT id_satellite, nom_satellite AS nom FROM VUE_SATELLITES_OPERATIONNELS`",
         "operationId": "backListSatellitesOperationnels",
         "responses": {
           "200": {
@@ -305,13 +325,7 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id_satellite": { "type": "integer" },
-                      "nom": { "type": "string" }
-                    }
-                  }
+                  "items": { "$ref": "#/components/schemas/SatelliteRef" }
                 }
               }
             }
@@ -325,7 +339,7 @@
       "get": {
         "tags": ["Back-office — lecture"],
         "summary": "Stations au sol actives — BO-02",
-        "description": "Liste déroulante des stations actives pour planification de fenêtre.",
+        "description": "Liste déroulante des stations actives pour planification de fenêtre.\n\n**SQL** : `SELECT code_station AS id_station, nom_station AS nom FROM STATION_SOL WHERE statut = 'Active'`",
         "operationId": "backListStationsActives",
         "responses": {
           "200": {
@@ -333,13 +347,7 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id_station": { "type": "integer" },
-                      "nom": { "type": "string" }
-                    }
-                  }
+                  "items": { "$ref": "#/components/schemas/StationRef" }
                 }
               }
             }
@@ -353,7 +361,7 @@
       "get": {
         "tags": ["Back-office — lecture"],
         "summary": "Missions actives (non terminées) — BO-03",
-        "description": "Missions éligibles à une nouvelle participation.",
+        "description": "Missions éligibles à une nouvelle participation.\n\n**SQL** : `SELECT id_mission, nom_mission AS nom, zone_geo_cible AS zone_cible FROM MISSION WHERE statut_mission = 'Active'`",
         "operationId": "backListMissionsActives",
         "responses": {
           "200": {
@@ -361,14 +369,7 @@
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id_mission": { "type": "integer" },
-                      "nom": { "type": "string" },
-                      "zone_cible": { "type": "string" }
-                    }
-                  }
+                  "items": { "$ref": "#/components/schemas/MissionRef" }
                 }
               }
             }
@@ -382,17 +383,20 @@
       "get": {
         "tags": ["Back-office — lecture"],
         "summary": "BO-05 (bonus) — Instruments embarqués d'un satellite",
+        "description": "Jointure `EMBARQUE` ↔ `INSTRUMENT`.\n\n**SQL** : `SELECT i.ref_instrument AS id_instrument, i.modele AS nom, i.type_instrument, e.etat_fonctionnement FROM EMBARQUE e JOIN INSTRUMENT i ON e.ref_instrument = i.ref_instrument WHERE e.id_satellite = ?`",
         "operationId": "backListInstrumentsSatellite",
         "parameters": [
           {
             "name": "id_satellite",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "SAT-001" },
+            "description": "Identifiant satellite (VARCHAR Phase 2)"
           }
         ],
         "responses": {
           "200": {
+            "description": "Instruments embarqués sur le satellite",
             "content": {
               "application/json": {
                 "schema": {
@@ -403,7 +407,8 @@
             }
           },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" }
+          "403": { "$ref": "#/components/responses/ForbiddenBackOffice" },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -418,7 +423,8 @@
             "name": "id_satellite",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "SAT-001" },
+            "description": "Identifiant satellite (VARCHAR Phase 2)"
           }
         ],
         "requestBody": {
@@ -467,7 +473,7 @@
       "post": {
         "tags": ["Back-office — écriture"],
         "summary": "BO-02 — Planifier une fenêtre de communication",
-        "description": "Profils autorisés : `operateur_sat`, `admin_nano`.\n\n**SQL** : `INSERT INTO FENETRE_COM (...) VALUES (...)` — respecter la contrainte CHECK Phase 2 (durée 1–900 s, etc.).",
+        "description": "Profils autorisés : `operateur_sat`, `admin_nano`.\n\n**SQL** : `INSERT INTO FENETRE_COMM (id_satellite, code_station, datetime_debut, duree, elevation_max, statut) VALUES (...)` — contrainte CHECK durée 1–900 s (Phase 2).",
         "operationId": "createFenetreCom",
         "requestBody": {
           "required": true,
@@ -514,7 +520,7 @@
       "post": {
         "tags": ["Back-office — écriture"],
         "summary": "BO-03 — Assigner un satellite à une mission",
-        "description": "Profils autorisés : `resp_mission`, `admin_nano`.\n\nVérifier mission non terminée et absence de participation existante avant `INSERT INTO PARTICIPATION (...)`.",
+        "description": "Profils autorisés : `resp_mission`, `admin_nano`.\n\nVérifier `statut_mission <> 'Terminée'` et absence de doublon avant `INSERT INTO PARTICIPE (...)`.",
         "operationId": "createParticipation",
         "requestBody": {
           "required": true,
@@ -566,7 +572,7 @@
             "name": "id_satellite",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "SAT-001" }
           }
         ],
         "requestBody": {
@@ -632,7 +638,7 @@
       "post": {
         "tags": ["Back-office — écriture"],
         "summary": "BO-05 (bonus) — Ajouter un instrument sur un satellite",
-        "description": "Profils : `operateur_sat`, `admin_nano`. Respect RG-I03 ; trigger T03 si Phase 4.5.",
+        "description": "Profils : `operateur_sat`, `admin_nano`.\n\n**SQL** : `INSERT INTO EMBARQUE (id_satellite, ref_instrument, date_integration, etat_fonctionnement) VALUES (?, ?, CURDATE(), ?)`\n\nLe corps accepte `id_instrument` ou `ref_instrument` (alias vers `ref_instrument` Phase 2).",
         "operationId": "createEmbarquement",
         "requestBody": {
           "required": true,
@@ -666,36 +672,48 @@
             "name": "id_satellite",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "SAT-001" },
+            "description": "Identifiant satellite"
           },
           {
             "name": "id_instrument",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "IR-MID-01" },
+            "description": "Référence instrument (`ref_instrument` Phase 2, alias API `id_instrument`)"
           }
         ],
         "responses": {
-          "200": { "description": "Embarquement supprimé" },
+          "200": {
+            "description": "Embarquement supprimé",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuccessMessage" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/ForbiddenAction" }
         }
       },
       "patch": {
         "tags": ["Back-office — écriture"],
         "summary": "BO-05 (bonus) — Modifier l'état d'un instrument embarqué",
+        "description": "**SQL** : `UPDATE EMBARQUE SET etat_fonctionnement = ? WHERE id_satellite = ? AND ref_instrument = ?`",
         "operationId": "updateEtatInstrument",
         "parameters": [
           {
             "name": "id_satellite",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "SAT-001" }
           },
           {
             "name": "id_instrument",
             "in": "path",
             "required": true,
-            "schema": { "type": "integer" }
+            "schema": { "type": "string", "example": "IR-MID-01" }
           }
         ],
         "requestBody": {
@@ -715,32 +733,17 @@
           }
         },
         "responses": {
-          "200": { "description": "État mis à jour" },
-          "403": { "$ref": "#/components/responses/ForbiddenAction" }
-        }
-      }
-    },
-    "/api/health": {
-      "get": {
-        "tags": ["Auth"],
-        "summary": "Santé API (Séance 1)",
-        "description": "Vérification que l'application répond ; test DB optionnel avec compte technique ou sans auth.",
-        "operationId": "healthCheck",
-        "security": [],
-        "responses": {
           "200": {
+            "description": "État mis à jour",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": { "type": "string", "example": "ok" },
-                    "database": { "type": "string", "example": "nanoOrbit_db" }
-                  }
-                }
+                "schema": { "$ref": "#/components/schemas/SuccessMessage" }
               }
             }
-          }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/ForbiddenAction" }
         }
       }
     }
@@ -760,7 +763,24 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/Error" },
-            "example": { "error": "Authentification requise" }
+            "example": { "error": "Non authentifié" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Route API introuvable",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" },
+            "example": { "error": "Route API introuvable." }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Données invalides ou contrainte métier violée",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
           }
         }
       },
@@ -824,11 +844,19 @@
       "AuthSession": {
         "type": "object",
         "properties": {
-          "username": { "type": "string" },
+          "username": {
+            "type": "string",
+            "description": "Compte login Phase 4",
+            "example": "operateur_sat"
+          },
           "role": {
             "type": "string",
             "enum": ["analyste", "operateur", "responsable", "admin"],
             "description": "Rôle applicatif dérivé du compte MySQL"
+          },
+          "can_access_backoffice": {
+            "type": "boolean",
+            "description": "false pour analyste_data"
           },
           "access": {
             "type": "object",
@@ -842,63 +870,94 @@
           }
         }
       },
+      "SatelliteRef": {
+        "type": "object",
+        "properties": {
+          "id_satellite": { "type": "string", "example": "SAT-001" },
+          "nom": { "type": "string", "example": "NanoOrbitAlpha" }
+        }
+      },
+      "StationRef": {
+        "type": "object",
+        "properties": {
+          "id_station": {
+            "type": "string",
+            "description": "Alias de code_station",
+            "example": "GS-TLS-01"
+          },
+          "nom": { "type": "string", "example": "Toulouse-CNES" }
+        }
+      },
+      "MissionRef": {
+        "type": "object",
+        "properties": {
+          "id_mission": { "type": "string", "example": "MSN-AMA-2023" },
+          "nom": { "type": "string", "example": "ForestWatch Amazonia" },
+          "zone_cible": {
+            "type": "string",
+            "description": "Alias de zone_geo_cible",
+            "example": "Amérique du Sud (-5N, 50O)"
+          }
+        }
+      },
       "SatelliteOperationnel": {
         "type": "object",
-        "description": "Colonnes alignées sur VUE_SATELLITES_OPERATIONNELS (noms à adapter selon votre schéma)",
+        "description": "Colonnes de VUE_SATELLITES_OPERATIONNELS (noms selon vue Phase 3)",
+        "additionalProperties": true,
         "properties": {
-          "id_satellite": { "type": "integer" },
-          "nom": { "type": "string" },
-          "format": {
+          "id_satellite": { "type": "string", "example": "SAT-001" },
+          "nom_satellite": { "type": "string", "example": "NanoOrbitAlpha" },
+          "format_cubesat": {
             "type": "string",
             "enum": ["1U", "3U", "6U", "12U"],
             "description": "Indicateur visuel côté UI"
           },
           "date_lancement": { "type": "string", "format": "date" },
-          "type_orbite": { "type": "string" },
-          "altitude_km": { "type": "number" },
-          "capacite_batterie_wh": { "type": "number" }
+          "type_orbite": { "type": "string", "example": "SSO" },
+          "altitude": { "type": "integer", "example": 550 },
+          "capacite_batterie": { "type": "number", "example": 60.0 }
         }
       },
       "BilanCommunication": {
         "type": "object",
         "description": "VUE_BILAN_COMMUNICATIONS",
+        "additionalProperties": true,
         "properties": {
-          "id_satellite": { "type": "integer" },
+          "id_satellite": { "type": "string", "example": "SAT-001" },
           "nom_satellite": { "type": "string" },
-          "nb_fenetres_realisees": { "type": "integer" },
-          "volume_total_mo": { "type": "number" },
-          "volume_moyen_par_fenetre_mo": { "type": "number" },
-          "date_derniere_communication": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "nb_stations_contactees": { "type": "integer" }
+          "nb_fenetres": { "type": "integer" },
+          "volume_total": { "type": "number" },
+          "volume_moyen": { "type": "number" },
+          "date_derniere_com": { "type": "string", "format": "date-time" },
+          "nb_stations": { "type": "integer" }
         }
       },
       "MissionTableauBord": {
         "type": "object",
-        "description": "VUE_TABLEAU_DE_BORD_MISSIONS",
+        "description": "VUE_TABLEAU_DE_BORD_MISSIONS (+ champ calculé sous_dotee)",
+        "additionalProperties": true,
         "properties": {
-          "id_mission": { "type": "integer" },
-          "nom": { "type": "string" },
-          "zone_geographique_cible": { "type": "string" },
+          "id_mission": { "type": "string", "example": "MSN-AMA-2023" },
+          "nom_mission": { "type": "string" },
+          "zone_geo_cible": { "type": "string" },
           "date_debut": { "type": "string", "format": "date" },
-          "nb_satellites_participants": { "type": "integer" },
-          "nb_satellites_operationnels": { "type": "integer" },
+          "nb_satellites": { "type": "integer" },
+          "nb_sat_operationnels": { "type": "integer" },
           "sous_dotee": {
             "type": "boolean",
-            "description": "true si nb_satellites_operationnels < nb_satellites_participants"
+            "description": "true si nb_sat_operationnels < nb_satellites"
           }
         }
       },
       "AlerteInstrument": {
         "type": "object",
         "description": "VUE_ALERTES_INSTRUMENTS",
+        "additionalProperties": true,
         "properties": {
-          "id_instrument": { "type": "integer" },
-          "nom_instrument": { "type": "string" },
-          "id_satellite": { "type": "integer" },
-          "nom_satellite": { "type": "string" },
+          "ref_instrument": { "type": "string", "example": "IR-MID-01" },
+          "nom_satellite": { "type": "string", "example": "NanoOrbitAlpha" },
+          "statut_satellite": { "type": "string" },
+          "type_instrument": { "type": "string" },
           "etat_fonctionnement": {
             "type": "string",
             "enum": ["Dégradé", "Hors service"]
@@ -912,31 +971,36 @@
       },
       "FenetreHistorique": {
         "type": "object",
-        "description": "FO-05 — jointure fenêtres / satellite / station",
+        "description": "FO-05 — jointure FENETRE_COMM / SATELLITE / STATION_SOL",
         "properties": {
           "id_fenetre": { "type": "integer" },
           "date_heure_debut": { "type": "string", "format": "date-time" },
           "duree_secondes": { "type": "integer", "minimum": 1, "maximum": 900 },
-          "id_satellite": { "type": "integer" },
+          "id_satellite": { "type": "string", "example": "SAT-001" },
           "nom_satellite": { "type": "string" },
-          "id_station": { "type": "integer" },
+          "id_station": {
+            "type": "string",
+            "description": "Alias de code_station",
+            "example": "GS-TLS-01"
+          },
           "nom_station": { "type": "string" },
           "elevation_max_deg": { "type": "number" },
-          "volume_donnees_mo": { "type": "number" },
+          "volume_donnees_mo": { "type": "number", "nullable": true },
           "statut": {
             "type": "string",
-            "enum": ["Réalisée", "Planifiée", "Échouée"]
+            "enum": ["Réalisée", "Planifiée", "En cours", "Échouée"]
           }
         }
       },
       "SatelliteStatut": {
         "type": "object",
         "properties": {
-          "id_satellite": { "type": "integer" },
-          "nom": { "type": "string" },
+          "id_satellite": { "type": "string", "example": "SAT-001" },
+          "nom": { "type": "string", "example": "NanoOrbitAlpha" },
           "statut": {
             "type": "string",
-            "enum": ["Opérationnel", "En veille", "Désorbité"]
+            "enum": ["Opérationnel", "En veille", "Défaillant", "Désorbité"],
+            "description": "BO-01 n'autorise que Opérationnel, En veille, Désorbité"
           }
         }
       },
@@ -961,16 +1025,19 @@
         ],
         "properties": {
           "id_satellite": {
-            "type": "integer",
-            "description": "Satellite opérationnel"
+            "type": "string",
+            "description": "Satellite opérationnel",
+            "example": "SAT-001"
           },
           "id_station": {
-            "type": "integer",
-            "description": "Station au sol active"
+            "type": "string",
+            "description": "Station au sol active (code_station)",
+            "example": "GS-TLS-01"
           },
           "date_heure_debut": {
             "type": "string",
-            "format": "date-time"
+            "description": "Format `YYYY-MM-DD HH:MM:SS`",
+            "example": "2024-06-02 14:30:00"
           },
           "duree_secondes": {
             "type": "integer",
@@ -993,38 +1060,63 @@
         "required": ["id_satellite", "id_mission", "role_satellite"],
         "properties": {
           "id_satellite": {
-            "type": "integer",
-            "description": "Satellite opérationnel"
+            "type": "string",
+            "description": "Satellite opérationnel",
+            "example": "SAT-004"
           },
           "id_mission": {
-            "type": "integer",
-            "description": "Mission active (non terminée)"
+            "type": "string",
+            "description": "Mission active (statut_mission = Active)",
+            "example": "MSN-ARC-2023"
           },
           "role_satellite": {
             "type": "string",
-            "description": "Rôle du satellite dans la mission (selon votre MCD)"
+            "description": "Rôle du satellite dans la mission",
+            "example": "Satellite de relais"
           }
         }
       },
       "CreateEmbarquementRequest": {
         "type": "object",
-        "required": ["id_satellite", "id_instrument"],
+        "required": ["id_satellite"],
         "properties": {
-          "id_satellite": { "type": "integer" },
-          "id_instrument": { "type": "integer" },
+          "id_satellite": { "type": "string", "example": "SAT-003" },
+          "id_instrument": {
+            "type": "string",
+            "description": "Alias API de ref_instrument",
+            "example": "CAM-HR-02"
+          },
+          "ref_instrument": {
+            "type": "string",
+            "description": "Référence instrument Phase 2 (prioritaire si les deux sont fournis)",
+            "example": "CAM-HR-02"
+          },
           "etat_fonctionnement": {
             "type": "string",
             "enum": ["Nominal", "Dégradé", "Hors service"],
             "default": "Nominal"
           }
-        }
+        },
+        "anyOf": [
+          { "required": ["id_instrument"] },
+          { "required": ["ref_instrument"] }
+        ]
       },
       "InstrumentEmbarque": {
         "type": "object",
+        "description": "ref_instrument et modele exposés sous id_instrument et nom",
         "properties": {
-          "id_instrument": { "type": "integer" },
-          "nom": { "type": "string" },
-          "type_instrument": { "type": "string" },
+          "id_instrument": {
+            "type": "string",
+            "description": "Alias de ref_instrument",
+            "example": "IR-MID-01"
+          },
+          "nom": {
+            "type": "string",
+            "description": "Alias de modele",
+            "example": "ThermoSat IRv3"
+          },
+          "type_instrument": { "type": "string", "example": "Capteur IR" },
           "etat_fonctionnement": {
             "type": "string",
             "enum": ["Nominal", "Dégradé", "Hors service"]
@@ -1036,9 +1128,10 @@
   "security": [{ "sessionCookie": [] }],
   "x-implementation-checklist": {
     "seance_1": [
-      "GET /api/health ou SELECT 1 via pool utilisateur",
       "POST /api/auth/login + session",
-      "GET /api/satellites (VUE_SATELLITES_OPERATIONNELS)"
+      "GET /api/auth/me",
+      "GET /api/satellites (VUE_SATELLITES_OPERATIONNELS)",
+      "GET / — page de test statique"
     ],
     "seance_2": [
       "GET /api/communications",
@@ -1054,8 +1147,12 @@
     ],
     "bonus": [
       "GET /api/fenetres/historique",
-      "BO-05 embarquements",
+      "BO-05 embarquements (EMBARQUE / ref_instrument)",
       "GET routes /api/back/* pour formulaires"
+    ],
+    "a_venir": [
+      "GET /api/health",
+      "GET /api/health/db"
     ]
   }
 }

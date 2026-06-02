@@ -13,7 +13,14 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    CORS(app, supports_credentials=True)
+    CORS(
+        app,
+        supports_credentials=True,
+        origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+    )
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(front_bp, url_prefix="/api")

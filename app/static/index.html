@@ -77,6 +77,7 @@
       justify-content: space-between;
       gap: 1rem;
       margin-bottom: 1rem;
+      flex-wrap: wrap;
     }
 
     .card-header h2 {
@@ -90,7 +91,8 @@
       color: var(--muted);
     }
 
-    select, input[type="password"] {
+    select, input[type="password"], input[type="text"],
+    input[type="number"], input[type="datetime-local"] {
       width: 100%;
       padding: 0.65rem 0.75rem;
       margin-bottom: 1rem;
@@ -105,6 +107,17 @@
       outline: 2px solid var(--accent);
       outline-offset: 1px;
     }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.75rem;
+      align-items: end;
+      margin-bottom: 1rem;
+    }
+
+    .filter-row label { margin-bottom: 0.35rem; }
+    .filter-row select, .filter-row input { margin-bottom: 0; }
 
     .actions {
       display: flex;
@@ -189,6 +202,29 @@
 
     .badge.back { background: rgba(61, 214, 140, 0.2); color: var(--success); }
     .badge.front-only { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+    .badge.critique { background: rgba(255, 107, 107, 0.2); color: var(--error); }
+    .badge.surveillance { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+    .badge.active-sat { background: rgba(61, 214, 140, 0.2); color: var(--success); }
+    .badge.sous-dotee { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+
+    .highlight-box {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+      background: rgba(61, 214, 140, 0.08);
+    }
+
+    .highlight-box.warn {
+      background: rgba(251, 191, 36, 0.08);
+      border-color: rgba(251, 191, 36, 0.35);
+    }
+
+    .highlight-box.error {
+      background: rgba(255, 107, 107, 0.08);
+      border-color: rgba(255, 107, 107, 0.35);
+    }
 
     .format-badge {
       display: inline-flex;
@@ -255,7 +291,11 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: rgba(255, 255, 255, 0.02); }
 
-    .sat-count {
+    tr.row-active td { background: rgba(61, 214, 140, 0.08); }
+    tr.row-sous-dotee td { background: rgba(251, 191, 36, 0.08); }
+    tr.row-critique td { background: rgba(255, 107, 107, 0.06); }
+
+    .meta-count {
       font-size: 0.85rem;
       color: var(--muted);
     }
@@ -309,13 +349,93 @@
       border-radius: 4px;
       font-size: 0.78rem;
     }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .tabs button {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .tabs button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+      margin-bottom: 1rem;
+    }
+
+    .form-grid label { margin-bottom: 0.35rem; }
+    .form-grid select,
+    .form-grid input { margin-bottom: 0; }
+
+    .section-note {
+      margin: 0 0 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .section-note .role-tag {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: var(--bg);
+      font-size: 0.78rem;
+    }
+
+    .back-locked {
+      border-color: rgba(251, 191, 36, 0.35);
+    }
+
+    .flash {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      border: 1px solid var(--border);
+    }
+
+    .flash.success {
+      background: rgba(61, 214, 140, 0.12);
+      border-color: rgba(61, 214, 140, 0.35);
+      color: var(--success);
+    }
+
+    .flash.error {
+      background: rgba(255, 107, 107, 0.12);
+      border-color: rgba(255, 107, 107, 0.35);
+      color: var(--error);
+    }
+
+    .form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    @media (max-width: 640px) {
+      .filter-row {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>NanoOrbit — Test API</h1>
-      <p>Connexion, session et consultation <code>GET /api/satellites</code> (<code>VUE_SATELLITES_OPERATIONNELS</code>).</p>
+      <p>Front-office FO-01 à FO-05 et back-office BO-01 à BO-05 — test complet de l'API.</p>
     </header>
 
     <section class="card">
@@ -353,17 +473,246 @@
       <div class="session-info" id="session-info">Aucune session active.</div>
     </section>
 
-    <section class="card hidden" id="satellites-section">
+    <section class="card hidden front-section" id="toolbar-section">
+      <div class="card-header">
+        <h2>Front-office</h2>
+        <button type="button" class="primary" id="btn-refresh-all">Actualiser tout</button>
+      </div>
+    </section>
+
+    <section class="card hidden front-section" id="satellites-section">
       <div class="card-header">
         <h2>Satellites opérationnels — FO-01</h2>
         <div class="actions">
-          <span class="sat-count" id="sat-count"></span>
+          <span class="meta-count" id="sat-count"></span>
           <button type="button" class="secondary" id="btn-satellites">Actualiser</button>
         </div>
       </div>
-      <div id="satellites-content">
-        <div class="empty-state">Chargement…</div>
+      <div id="satellites-content"><div class="empty-state">Connectez-vous pour charger.</div></div>
+    </section>
+
+    <section class="card hidden front-section" id="communications-section">
+      <div class="card-header">
+        <h2>Bilan communications — FO-02</h2>
+        <div class="actions">
+          <button type="button" class="secondary" id="btn-communications">Actualiser</button>
+        </div>
       </div>
+      <div id="com-highlight"></div>
+      <div id="communications-content"><div class="empty-state">Connectez-vous pour charger.</div></div>
+    </section>
+
+    <section class="card hidden front-section" id="missions-section">
+      <div class="card-header">
+        <h2>Tableau de bord missions — FO-03</h2>
+        <div class="actions">
+          <span class="meta-count" id="missions-count"></span>
+          <button type="button" class="secondary" id="btn-missions">Actualiser</button>
+        </div>
+      </div>
+      <div id="missions-content"><div class="empty-state">Connectez-vous pour charger.</div></div>
+    </section>
+
+    <section class="card hidden front-section" id="alertes-section">
+      <div class="card-header">
+        <h2>Alertes instruments — FO-04</h2>
+        <div class="actions">
+          <button type="button" class="secondary" id="btn-alertes">Actualiser</button>
+        </div>
+      </div>
+      <div id="alertes-highlight"></div>
+      <div id="alertes-content"><div class="empty-state">Connectez-vous pour charger.</div></div>
+    </section>
+
+    <section class="card hidden front-section" id="historique-section">
+      <div class="card-header">
+        <h2>Historique fenêtres — FO-05</h2>
+        <div class="actions">
+          <span class="meta-count" id="historique-count"></span>
+          <button type="button" class="secondary" id="btn-historique">Actualiser</button>
+        </div>
+      </div>
+      <div class="filter-row">
+        <div>
+          <label for="filter-id-satellite">ID satellite (optionnel)</label>
+          <input type="text" id="filter-id-satellite" placeholder="ex. SAT-001">
+        </div>
+        <div>
+          <label for="filter-statut">Statut (optionnel)</label>
+          <select id="filter-statut">
+            <option value="">— Tous —</option>
+            <option value="Réalisée">Réalisée</option>
+            <option value="Planifiée">Planifiée</option>
+            <option value="Échouée">Échouée</option>
+          </select>
+        </div>
+        <button type="button" class="primary" id="btn-filter-historique">Filtrer</button>
+      </div>
+      <div id="historique-content"><div class="empty-state">Connectez-vous pour charger.</div></div>
+    </section>
+
+    <section class="card hidden" id="nav-section">
+      <div class="tabs">
+        <button type="button" class="secondary active" id="tab-front">Front-office</button>
+        <button type="button" class="secondary" id="tab-back">Back-office</button>
+      </div>
+    </section>
+
+    <div id="flash" class="flash hidden"></div>
+
+    <section class="card hidden back-section" id="back-toolbar-section">
+      <div class="card-header">
+        <h2>Back-office</h2>
+        <button type="button" class="primary" id="btn-refresh-back">Actualiser données back</button>
+      </div>
+      <p class="section-note" id="back-access-note">
+        Actions réservées aux profils avec droits d'écriture. Les refus d'accès s'affichent dans la réponse API.
+      </p>
+    </section>
+
+    <section class="card hidden back-section" id="bo01-section">
+      <div class="card-header">
+        <h2>BO-01 — Modifier le statut d'un satellite</h2>
+        <span class="meta-count role-tag">operateur_sat · admin_nano</span>
+      </div>
+      <p class="section-note">Liste tous les satellites et permet de changer leur statut.</p>
+      <div id="bo01-table"><div class="empty-state">Connectez-vous avec accès back-office.</div></div>
+      <form id="bo01-form">
+        <div class="form-grid">
+          <div>
+            <label for="bo01-satellite">Satellite</label>
+            <select id="bo01-satellite" required></select>
+          </div>
+          <div>
+            <label for="bo01-statut">Nouveau statut</label>
+            <select id="bo01-statut" required>
+              <option value="Opérationnel">Opérationnel</option>
+              <option value="En veille">En veille</option>
+              <option value="Désorbité">Désorbité</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="btn-bo01">Mettre à jour le statut</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden back-section" id="bo02-section">
+      <div class="card-header">
+        <h2>BO-02 — Planifier une fenêtre de communication</h2>
+        <span class="meta-count role-tag">operateur_sat · admin_nano</span>
+      </div>
+      <form id="bo02-form">
+        <div class="form-grid">
+          <div>
+            <label for="bo02-satellite">Satellite opérationnel</label>
+            <select id="bo02-satellite" required></select>
+          </div>
+          <div>
+            <label for="bo02-station">Station au sol active</label>
+            <select id="bo02-station" required></select>
+          </div>
+          <div>
+            <label for="bo02-debut">Date / heure de début</label>
+            <input type="datetime-local" id="bo02-debut" required>
+          </div>
+          <div>
+            <label for="bo02-duree">Durée (secondes, 1–900)</label>
+            <input type="number" id="bo02-duree" min="1" max="900" value="300" required>
+          </div>
+          <div>
+            <label for="bo02-elevation">Élévation max (°)</label>
+            <input type="number" id="bo02-elevation" min="0" max="90" step="0.1" value="45" required>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="btn-bo02">Planifier la fenêtre</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden back-section" id="bo03-section">
+      <div class="card-header">
+        <h2>BO-03 — Assigner un satellite à une mission</h2>
+        <span class="meta-count role-tag">resp_mission · admin_nano</span>
+      </div>
+      <form id="bo03-form">
+        <div class="form-grid">
+          <div>
+            <label for="bo03-satellite">Satellite opérationnel</label>
+            <select id="bo03-satellite" required></select>
+          </div>
+          <div>
+            <label for="bo03-mission">Mission active</label>
+            <select id="bo03-mission" required></select>
+          </div>
+          <div>
+            <label for="bo03-role">Rôle du satellite</label>
+            <input type="text" id="bo03-role" placeholder="ex. Principal, Relais…" required>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="btn-bo03">Assigner à la mission</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden back-section" id="bo04-section">
+      <div class="card-header">
+        <h2>BO-04 — Désorbiter un satellite</h2>
+        <span class="meta-count role-tag">admin_nano uniquement</span>
+      </div>
+      <p class="section-note">Action destructive — une confirmation explicite est requise.</p>
+      <form id="bo04-form">
+        <div class="form-grid">
+          <div>
+            <label for="bo04-satellite">Satellite</label>
+            <select id="bo04-satellite" required></select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="danger" id="btn-bo04">Désorbiter le satellite</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden back-section" id="bo05-section">
+      <div class="card-header">
+        <h2>BO-05 — Instruments embarqués (bonus)</h2>
+        <span class="meta-count role-tag">operateur_sat · admin_nano</span>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="bo05-satellite">Satellite</label>
+          <select id="bo05-satellite"></select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button type="button" class="secondary" id="btn-bo05-load">Charger instruments</button>
+        </div>
+      </div>
+      <div id="bo05-table"><div class="empty-state">Sélectionnez un satellite.</div></div>
+      <form id="bo05-add-form">
+        <h3 style="margin:1rem 0 0.75rem;font-size:0.9rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">Ajouter un instrument</h3>
+        <div class="form-grid">
+          <div>
+            <label for="bo05-id-instrument">ID / réf. instrument</label>
+            <input type="text" id="bo05-id-instrument" placeholder="ex. IR-MID-01" required>
+          </div>
+          <div>
+            <label for="bo05-etat">État initial</label>
+            <select id="bo05-etat">
+              <option value="Nominal">Nominal</option>
+              <option value="Dégradé">Dégradé</option>
+              <option value="Hors service">Hors service</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary" id="btn-bo05-add">Embarquer</button>
+        </div>
+      </form>
     </section>
 
     <section class="card">
@@ -380,18 +729,86 @@
       password: document.getElementById("password"),
       btnMe: document.getElementById("btn-me"),
       btnLogout: document.getElementById("btn-logout"),
+      btnRefreshAll: document.getElementById("btn-refresh-all"),
       btnSatellites: document.getElementById("btn-satellites"),
+      btnCommunications: document.getElementById("btn-communications"),
+      btnMissions: document.getElementById("btn-missions"),
+      btnAlertes: document.getElementById("btn-alertes"),
+      btnHistorique: document.getElementById("btn-historique"),
+      btnFilterHistorique: document.getElementById("btn-filter-historique"),
+      filterIdSatellite: document.getElementById("filter-id-satellite"),
+      filterStatut: document.getElementById("filter-statut"),
       statusDot: document.getElementById("status-dot"),
       statusLabel: document.getElementById("status-label"),
       sessionInfo: document.getElementById("session-info"),
-      satellitesSection: document.getElementById("satellites-section"),
+      frontSections: document.querySelectorAll(".front-section"),
       satellitesContent: document.getElementById("satellites-content"),
       satCount: document.getElementById("sat-count"),
+      comHighlight: document.getElementById("com-highlight"),
+      communicationsContent: document.getElementById("communications-content"),
+      missionsContent: document.getElementById("missions-content"),
+      missionsCount: document.getElementById("missions-count"),
+      alertesHighlight: document.getElementById("alertes-highlight"),
+      alertesContent: document.getElementById("alertes-content"),
+      historiqueContent: document.getElementById("historique-content"),
+      historiqueCount: document.getElementById("historique-count"),
       responseLog: document.getElementById("response-log"),
       logMeta: document.getElementById("log-meta"),
+      navSection: document.getElementById("nav-section"),
+      tabFront: document.getElementById("tab-front"),
+      tabBack: document.getElementById("tab-back"),
+      flash: document.getElementById("flash"),
+      backSections: document.querySelectorAll(".back-section"),
+      btnRefreshBack: document.getElementById("btn-refresh-back"),
+      bo01Table: document.getElementById("bo01-table"),
+      bo01Form: document.getElementById("bo01-form"),
+      bo01Satellite: document.getElementById("bo01-satellite"),
+      bo01Statut: document.getElementById("bo01-statut"),
+      bo02Form: document.getElementById("bo02-form"),
+      bo02Satellite: document.getElementById("bo02-satellite"),
+      bo02Station: document.getElementById("bo02-station"),
+      bo02Debut: document.getElementById("bo02-debut"),
+      bo02Duree: document.getElementById("bo02-duree"),
+      bo02Elevation: document.getElementById("bo02-elevation"),
+      bo03Form: document.getElementById("bo03-form"),
+      bo03Satellite: document.getElementById("bo03-satellite"),
+      bo03Mission: document.getElementById("bo03-mission"),
+      bo03Role: document.getElementById("bo03-role"),
+      bo04Form: document.getElementById("bo04-form"),
+      bo04Satellite: document.getElementById("bo04-satellite"),
+      bo05Satellite: document.getElementById("bo05-satellite"),
+      bo05Table: document.getElementById("bo05-table"),
+      bo05AddForm: document.getElementById("bo05-add-form"),
+      bo05IdInstrument: document.getElementById("bo05-id-instrument"),
+      bo05Etat: document.getElementById("bo05-etat"),
+      btnBo05Load: document.getElementById("btn-bo05-load"),
     };
 
     let isConnected = false;
+    let currentRole = null;
+    let canAccessBack = false;
+    let activeView = "front";
+
+    const BACK_PERMISSIONS = {
+      bo01: ["operateur", "admin"],
+      bo02: ["operateur", "admin"],
+      bo03: ["responsable", "admin"],
+      bo04: ["admin"],
+      bo05: ["operateur", "admin"],
+    };
+
+    const BACK_SAT_COLUMNS = [
+      { key: "id_satellite", label: "ID" },
+      { key: "nom", label: "Nom", fallback: ["nom_satellite"] },
+      { key: "statut", label: "Statut" },
+    ];
+
+    const INSTRUMENT_COLUMNS = [
+      { key: "id_instrument", label: "ID" },
+      { key: "nom", label: "Nom", fallback: ["nom_instrument"] },
+      { key: "type_instrument", label: "Type" },
+      { key: "etat_fonctionnement", label: "État" },
+    ];
 
     const SATELLITE_COLUMNS = [
       { key: "id_satellite", label: "ID", fallback: ["id"] },
@@ -401,6 +818,45 @@
       { key: "type_orbite", label: "Orbite", fallback: ["type_orbite_satellite"] },
       { key: "altitude_km", label: "Altitude (km)", fallback: ["altitude"] },
       { key: "capacite_batterie_wh", label: "Batterie (Wh)", fallback: ["capacite_batterie"] },
+    ];
+
+    const COMM_COLUMNS = [
+      { key: "id_satellite", label: "ID" },
+      { key: "nom_satellite", label: "Satellite" },
+      { key: "nb_fenetres", label: "Fenêtres" },
+      { key: "volume_total", label: "Volume total", fallback: ["volume_total_mo"] },
+      { key: "volume_moyen", label: "Volume moyen" },
+      { key: "date_derniere_com", label: "Dernière com." },
+      { key: "nb_stations", label: "Stations" },
+    ];
+
+    const MISSION_COLUMNS = [
+      { key: "id_mission", label: "ID" },
+      { key: "nom_mission", label: "Mission", fallback: ["nom"] },
+      { key: "nb_satellites_participants", label: "Participants", fallback: ["nb_satellites"] },
+      { key: "nb_satellites_operationnels", label: "Opérationnels", fallback: ["nb_sat_operationnels"] },
+      { key: "sous_dotee", label: "Sous-dotée" },
+    ];
+
+    const ALERTE_COLUMNS = [
+      { key: "id_instrument", label: "Instrument", fallback: ["code_instrument", "type_instrument", "nom_instrument"] },
+      { key: "id_satellite", label: "Satellite", fallback: ["code_satellite", "ref_satellite"] },
+      { key: "nom_satellite", label: "Nom sat." },
+      { key: "etat_fonctionnement", label: "État" },
+      { key: "priorite", label: "Priorité" },
+    ];
+
+    const HISTORIQUE_COLUMNS = [
+      { key: "id_fenetre", label: "ID" },
+      { key: "date_heure_debut", label: "Début" },
+      { key: "duree_secondes", label: "Durée (s)" },
+      { key: "id_satellite", label: "Satellite" },
+      { key: "nom_satellite", label: "Nom sat." },
+      { key: "id_station", label: "Station" },
+      { key: "nom_station", label: "Nom stat." },
+      { key: "elevation_max_deg", label: "Élév. max (°)" },
+      { key: "volume_donnees_mo", label: "Volume (Mo)" },
+      { key: "statut", label: "Statut" },
     ];
 
     function pickField(row, column) {
@@ -426,35 +882,52 @@
       return `<span class="format-badge ${cls}">${label}</span>`;
     }
 
+    function prioriteBadge(value) {
+      const v = String(value ?? "").toUpperCase();
+      if (v === "CRITIQUE") return `<span class="badge critique">CRITIQUE</span>`;
+      if (v === "SURVEILLANCE") return `<span class="badge surveillance">SURVEILLANCE</span>`;
+      return value ?? "—";
+    }
+
+    function boolLabel(value) {
+      if (value === true || value === 1 || value === "1") return '<span class="badge sous-dotee">Oui</span>';
+      if (value === false || value === 0 || value === "0") return "Non";
+      return value ?? "—";
+    }
+
     function formatCell(column, value) {
       if (column.key === "format") return formatBadge(value);
+      if (column.key === "priorite") return prioriteBadge(value);
+      if (column.key === "sous_dotee") return boolLabel(value);
       if (value == null || value === "") return "—";
       if (column.key.includes("date") && typeof value === "string") {
         const d = new Date(value);
         if (!Number.isNaN(d.getTime())) {
-          return d.toLocaleDateString("fr-FR");
+          return d.toLocaleString("fr-FR");
         }
       }
       return value;
     }
 
-    function renderSatellites(rows) {
+    function renderTable(container, columns, rows, options = {}) {
+      const { emptyMessage = "Aucune donnée.", rowClass = () => "" } = options;
+
       if (!Array.isArray(rows) || rows.length === 0) {
-        els.satellitesContent.innerHTML = '<div class="empty-state">Aucun satellite opérationnel.</div>';
-        els.satCount.textContent = "0 satellite";
+        container.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
         return;
       }
 
-      const head = SATELLITE_COLUMNS.map((c) => `<th>${c.label}</th>`).join("");
-      const body = rows.map((row) => {
-        const cells = SATELLITE_COLUMNS.map((col) => {
+      const head = columns.map((c) => `<th>${c.label}</th>`).join("");
+      const body = rows.map((row, index) => {
+        const cls = rowClass(row, index);
+        const cells = columns.map((col) => {
           const value = pickField(row, col);
           return `<td>${formatCell(col, value)}</td>`;
         }).join("");
-        return `<tr>${cells}</tr>`;
+        return `<tr class="${cls}">${cells}</tr>`;
       }).join("");
 
-      els.satellitesContent.innerHTML = `
+      container.innerHTML = `
         <div class="table-wrap">
           <table>
             <thead><tr>${head}</tr></thead>
@@ -462,12 +935,326 @@
           </table>
         </div>
       `;
-      els.satCount.textContent = `${rows.length} satellite${rows.length > 1 ? "s" : ""}`;
     }
 
-    function renderSatellitesError(message) {
-      els.satellitesContent.innerHTML = `<div class="error-state">${message}</div>`;
-      els.satCount.textContent = "";
+    function renderError(container, message) {
+      container.innerHTML = `<div class="error-state">${message}</div>`;
+    }
+
+    function renderSatellites(rows) {
+      renderTable(els.satellitesContent, SATELLITE_COLUMNS, rows, {
+        emptyMessage: "Aucun satellite opérationnel.",
+      });
+      els.satCount.textContent = Array.isArray(rows)
+        ? `${rows.length} satellite${rows.length > 1 ? "s" : ""}`
+        : "";
+    }
+
+    function renderCommunications(data) {
+      const items = data?.items ?? [];
+      const active = data?.satellite_plus_actif;
+
+      if (active) {
+        const name = active.nom_satellite || active.nom || active.id_satellite;
+        const vol = active.volume_total ?? active.volume_total_mo ?? "—";
+        els.comHighlight.innerHTML =
+          `<div class="highlight-box">` +
+          `<span class="badge active-sat">Plus actif</span> ` +
+          `<strong>${name}</strong> — volume total : ${vol} Mo` +
+          `</div>`;
+      } else {
+        els.comHighlight.innerHTML = "";
+      }
+
+      renderTable(els.communicationsContent, COMM_COLUMNS, items, {
+        emptyMessage: "Aucune communication enregistrée.",
+        rowClass: (_, index) => (index === 0 && items.length ? "row-active" : ""),
+      });
+    }
+
+    function renderMissions(rows) {
+      renderTable(els.missionsContent, MISSION_COLUMNS, rows, {
+        emptyMessage: "Aucune mission.",
+        rowClass: (row) => {
+          const sous = row.sous_dotee;
+          return sous === true || sous === 1 || sous === "1" ? "row-sous-dotee" : "";
+        },
+      });
+      els.missionsCount.textContent = Array.isArray(rows)
+        ? `${rows.length} mission${rows.length > 1 ? "s" : ""}`
+        : "";
+    }
+
+    function renderAlertes(data) {
+      const items = data?.items ?? [];
+      const count = data?.compteur_critique ?? 0;
+
+      els.alertesHighlight.innerHTML =
+        `<div class="highlight-box ${count > 0 ? "error" : ""}">` +
+        `<span class="badge critique">${count}</span> alerte${count > 1 ? "s" : ""} critique${count > 1 ? "s" : ""}` +
+        `</div>`;
+
+      renderTable(els.alertesContent, ALERTE_COLUMNS, items, {
+        emptyMessage: "Aucune alerte instrument.",
+        rowClass: (row) => (String(row.priorite).toUpperCase() === "CRITIQUE" ? "row-critique" : ""),
+      });
+    }
+
+    function renderHistorique(rows) {
+      renderTable(els.historiqueContent, HISTORIQUE_COLUMNS, rows, {
+        emptyMessage: "Aucune fenêtre trouvée pour ces filtres.",
+      });
+      els.historiqueCount.textContent = Array.isArray(rows)
+        ? `${rows.length} fenêtre${rows.length > 1 ? "s" : ""}`
+        : "";
+    }
+
+    function showFlash(message, type = "success") {
+      els.flash.textContent = message;
+      els.flash.className = `flash ${type}`;
+      setTimeout(() => els.flash.classList.add("hidden"), 6000);
+    }
+
+    function canPerform(action) {
+      return BACK_PERMISSIONS[action]?.includes(currentRole) ?? false;
+    }
+
+    function applyBackPermissions() {
+      const map = [
+        ["bo01-section", "bo01"],
+        ["bo02-section", "bo02"],
+        ["bo03-section", "bo03"],
+        ["bo04-section", "bo04"],
+        ["bo05-section", "bo05"],
+      ];
+      for (const [id, action] of map) {
+        const section = document.getElementById(id);
+        if (!section) continue;
+        section.classList.toggle("back-locked", canAccessBack && !canPerform(action));
+      }
+    }
+
+    function fillSelect(select, items, { valueKey, labelKey, placeholder }) {
+      select.innerHTML = "";
+      if (placeholder) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = placeholder;
+        opt.disabled = true;
+        opt.selected = true;
+        select.appendChild(opt);
+      }
+      for (const item of items) {
+        const opt = document.createElement("option");
+        opt.value = item[valueKey];
+        opt.textContent = `${item[valueKey]} — ${item[labelKey] ?? item.nom ?? ""}`;
+        select.appendChild(opt);
+      }
+    }
+
+    function toApiDatetime(localValue) {
+      if (!localValue) return "";
+      const d = new Date(localValue);
+      if (Number.isNaN(d.getTime())) return localValue;
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function setActiveView(view) {
+      if (view === "back" && !canAccessBack) {
+        showFlash("Accès back-office refusé pour votre profil.", "error");
+        return;
+      }
+      activeView = view;
+      els.tabFront.classList.toggle("active", view === "front");
+      els.tabBack.classList.toggle("active", view === "back");
+      if (!isConnected) return;
+      els.frontSections.forEach((s) => s.classList.toggle("hidden", view !== "front"));
+      els.backSections.forEach((s) => s.classList.toggle("hidden", view !== "back"));
+    }
+
+    function initBo02DefaultDate() {
+      if (els.bo02Debut.value) return;
+      const d = new Date();
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      els.bo02Debut.value = d.toISOString().slice(0, 16);
+    }
+
+    function renderBo01Table(rows) {
+      renderTable(els.bo01Table, BACK_SAT_COLUMNS, rows, {
+        emptyMessage: "Aucun satellite.",
+      });
+    }
+
+    function renderBo05Table(rows, idSatellite) {
+      if (!Array.isArray(rows) || rows.length === 0) {
+        els.bo05Table.innerHTML = '<div class="empty-state">Aucun instrument embarqué.</div>';
+        return;
+      }
+
+      const head = INSTRUMENT_COLUMNS.map((c) => `<th>${c.label}</th>`).join("") +
+        '<th>Actions</th>';
+      const body = rows.map((row) => {
+        const cells = INSTRUMENT_COLUMNS.map((col) => {
+          const value = pickField(row, col);
+          return `<td>${formatCell(col, value)}</td>`;
+        }).join("");
+        const idInst = row.id_instrument;
+        const etat = row.etat_fonctionnement || "Nominal";
+        return `<tr>
+          ${cells}
+          <td>
+            <select class="bo05-etat-select" data-sat="${idSatellite}" data-inst="${idInst}">
+              <option value="Nominal" ${etat === "Nominal" ? "selected" : ""}>Nominal</option>
+              <option value="Dégradé" ${etat === "Dégradé" ? "selected" : ""}>Dégradé</option>
+              <option value="Hors service" ${etat === "Hors service" ? "selected" : ""}>Hors service</option>
+            </select>
+            <button type="button" class="danger bo05-delete" data-sat="${idSatellite}" data-inst="${idInst}" style="margin-left:0.35rem;padding:0.35rem 0.5rem;font-size:0.78rem;">Retirer</button>
+          </td>
+        </tr>`;
+      }).join("");
+
+      els.bo05Table.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr>${head}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      `;
+
+      els.bo05Table.querySelectorAll(".bo05-etat-select").forEach((select) => {
+        select.addEventListener("change", async () => {
+          const sat = select.dataset.sat;
+          const inst = select.dataset.inst;
+          const { ok, data } = await apiCall(
+            "/api",
+            "PATCH",
+            `/embarquements/${sat}/${inst}`,
+            { etat_fonctionnement: select.value }
+          );
+          if (ok) {
+            showFlash(data.message || "État mis à jour.", "success");
+          } else {
+            showFlash(data?.error || "Échec de la mise à jour.", "error");
+          }
+        });
+      });
+
+      els.bo05Table.querySelectorAll(".bo05-delete").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Retirer cet instrument du satellite ?")) return;
+          const sat = btn.dataset.sat;
+          const inst = btn.dataset.inst;
+          const { ok, data } = await apiCall(
+            "/api",
+            "DELETE",
+            `/embarquements/${sat}/${inst}`
+          );
+          if (ok) {
+            showFlash(data.message || "Instrument retiré.", "success");
+            await loadBo05Instruments();
+          } else {
+            showFlash(data?.error || "Échec du retrait.", "error");
+          }
+        });
+      });
+    }
+
+    async function loadBackSatellites() {
+      const { ok, status, data } = await apiCall("/api/back", "GET", "/satellites");
+      if (ok && Array.isArray(data)) {
+        renderBo01Table(data);
+        fillSelect(els.bo01Satellite, data, {
+          valueKey: "id_satellite",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+        fillSelect(els.bo04Satellite, data, {
+          valueKey: "id_satellite",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+        return data;
+      }
+      if (status === 403) {
+        renderError(els.bo01Table, data?.error || "Accès back-office refusé.");
+      }
+      return null;
+    }
+
+    async function loadBackSatellitesOp() {
+      const { ok, data } = await apiCall("/api/back", "GET", "/satellites/operationnels");
+      if (ok && Array.isArray(data)) {
+        fillSelect(els.bo02Satellite, data, {
+          valueKey: "id_satellite",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+        fillSelect(els.bo03Satellite, data, {
+          valueKey: "id_satellite",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+        fillSelect(els.bo05Satellite, data, {
+          valueKey: "id_satellite",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+      }
+    }
+
+    async function loadBackStations() {
+      const { ok, data } = await apiCall("/api/back", "GET", "/stations/actives");
+      if (ok && Array.isArray(data)) {
+        fillSelect(els.bo02Station, data, {
+          valueKey: "id_station",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+      }
+    }
+
+    async function loadBackMissions() {
+      const { ok, data } = await apiCall("/api/back", "GET", "/missions/actives");
+      if (ok && Array.isArray(data)) {
+        fillSelect(els.bo03Mission, data, {
+          valueKey: "id_mission",
+          labelKey: "nom",
+          placeholder: "— Choisir —",
+        });
+      }
+    }
+
+    async function loadBo05Instruments() {
+      const idSat = els.bo05Satellite.value;
+      if (!idSat) {
+        els.bo05Table.innerHTML = '<div class="empty-state">Sélectionnez un satellite.</div>';
+        return;
+      }
+      els.bo05Table.innerHTML = '<div class="empty-state">Chargement…</div>';
+      const { ok, data } = await apiCall(
+        "/api/back",
+        "GET",
+        `/satellites/${idSat}/instruments`
+      );
+      if (ok && Array.isArray(data)) {
+        renderBo05Table(data, idSat);
+      } else {
+        renderError(els.bo05Table, data?.error || "Impossible de charger les instruments.");
+      }
+    }
+
+    async function loadAllBack() {
+      if (!isConnected || !canAccessBack) return;
+      await Promise.all([
+        loadBackSatellites(),
+        loadBackSatellitesOp(),
+        loadBackStations(),
+        loadBackMissions(),
+      ]);
+      applyBackPermissions();
+      initBo02DefaultDate();
     }
 
     function roleBadge(role, access) {
@@ -480,25 +1267,60 @@
 
     function setConnected(connected) {
       isConnected = connected;
-      els.satellitesSection.classList.toggle("hidden", !connected);
+      els.navSection.classList.toggle("hidden", !connected);
+      els.frontSections.forEach((section) => {
+        section.classList.toggle("hidden", !connected || activeView !== "front");
+      });
+      els.backSections.forEach((section) => {
+        section.classList.toggle("hidden", !connected || !canAccessBack || activeView !== "back");
+      });
       if (!connected) {
-        els.satellitesContent.innerHTML = '<div class="empty-state">Connectez-vous pour afficher les satellites.</div>';
+        currentRole = null;
+        canAccessBack = false;
+        activeView = "front";
+        els.tabFront.classList.add("active");
+        els.tabBack.classList.remove("active");
+        const placeholder = '<div class="empty-state">Connectez-vous pour charger.</div>';
+        els.satellitesContent.innerHTML = placeholder;
+        els.communicationsContent.innerHTML = placeholder;
+        els.missionsContent.innerHTML = placeholder;
+        els.alertesContent.innerHTML = placeholder;
+        els.historiqueContent.innerHTML = placeholder;
+        els.bo01Table.innerHTML = '<div class="empty-state">Connectez-vous avec accès back-office.</div>';
+        els.bo05Table.innerHTML = '<div class="empty-state">Sélectionnez un satellite.</div>';
+        els.comHighlight.innerHTML = "";
+        els.alertesHighlight.innerHTML = "";
         els.satCount.textContent = "";
+        els.missionsCount.textContent = "";
+        els.historiqueCount.textContent = "";
+        els.flash.classList.add("hidden");
       }
     }
 
     function updateSessionUI(data, connected) {
       els.statusDot.className = "dot " + (connected ? "connected" : "disconnected");
       els.statusLabel.textContent = connected ? "Connecté" : "Non connecté";
+      currentRole = connected ? data?.role : null;
+      canAccessBack = connected && Boolean(data?.access?.back_office);
       setConnected(connected);
+      applyBackPermissions();
 
       if (connected && data) {
         els.sessionInfo.innerHTML =
           `<strong>${data.username}</strong> ${roleBadge(data.role, data.access)}<br>` +
           `Front-office : ${data.access?.front_office ? "oui" : "non"} · ` +
           `Back-office : ${data.access?.back_office ? "oui" : "non"}`;
+        if (!canAccessBack) {
+          els.tabBack.disabled = true;
+          els.tabBack.title = "Profil sans accès back-office";
+        } else {
+          els.tabBack.disabled = false;
+          els.tabBack.title = "";
+        }
       } else {
         els.sessionInfo.textContent = "Aucune session active.";
+        els.tabBack.disabled = false;
+        els.tabBack.title = "";
       }
     }
 
@@ -528,26 +1350,97 @@
       return { ok: res.ok, status: res.status, data };
     }
 
+    function handleAuthError(status, container, message) {
+      if (status === 401) {
+        updateSessionUI(null, false);
+        renderError(container, "Session expirée — reconnectez-vous.");
+        return true;
+      }
+      return false;
+    }
+
     async function loadSatellites() {
       if (!isConnected) return;
-
       els.satellitesContent.innerHTML = '<div class="empty-state">Chargement…</div>';
       const { ok, status, data } = await apiCall("/api", "GET", "/satellites");
-
       if (ok && Array.isArray(data)) {
         renderSatellites(data);
-      } else if (status === 401) {
-        updateSessionUI(null, false);
-        renderSatellitesError("Session expirée — reconnectez-vous.");
-      } else {
-        renderSatellitesError(data?.error || "Impossible de charger les satellites.");
+      } else if (!handleAuthError(status, els.satellitesContent)) {
+        renderError(els.satellitesContent, data?.error || "Impossible de charger les satellites.");
       }
+    }
+
+    async function loadCommunications() {
+      if (!isConnected) return;
+      els.communicationsContent.innerHTML = '<div class="empty-state">Chargement…</div>';
+      const { ok, status, data } = await apiCall("/api", "GET", "/communications");
+      if (ok && data?.items) {
+        renderCommunications(data);
+      } else if (!handleAuthError(status, els.communicationsContent)) {
+        renderError(els.communicationsContent, data?.error || "Impossible de charger les communications.");
+      }
+    }
+
+    async function loadMissions() {
+      if (!isConnected) return;
+      els.missionsContent.innerHTML = '<div class="empty-state">Chargement…</div>';
+      const { ok, status, data } = await apiCall("/api", "GET", "/missions");
+      if (ok && Array.isArray(data)) {
+        renderMissions(data);
+      } else if (!handleAuthError(status, els.missionsContent)) {
+        renderError(els.missionsContent, data?.error || "Impossible de charger les missions.");
+      }
+    }
+
+    async function loadAlertes() {
+      if (!isConnected) return;
+      els.alertesContent.innerHTML = '<div class="empty-state">Chargement…</div>';
+      const { ok, status, data } = await apiCall("/api", "GET", "/alertes");
+      if (ok && data?.items) {
+        renderAlertes(data);
+      } else if (!handleAuthError(status, els.alertesContent)) {
+        renderError(els.alertesContent, data?.error || "Impossible de charger les alertes.");
+      }
+    }
+
+    async function loadHistorique() {
+      if (!isConnected) return;
+      els.historiqueContent.innerHTML = '<div class="empty-state">Chargement…</div>';
+
+      const params = new URLSearchParams();
+      const idSat = els.filterIdSatellite.value.trim();
+      const statut = els.filterStatut.value;
+      if (idSat) params.set("id_satellite", idSat);
+      if (statut) params.set("statut", statut);
+
+      const query = params.toString();
+      const path = "/fenetres/historique" + (query ? "?" + query : "");
+      const { ok, status, data } = await apiCall("/api", "GET", path);
+
+      if (ok && Array.isArray(data)) {
+        renderHistorique(data);
+      } else if (!handleAuthError(status, els.historiqueContent)) {
+        renderError(els.historiqueContent, data?.error || "Impossible de charger l'historique.");
+      }
+    }
+
+    async function loadAllFront() {
+      await Promise.all([
+        loadSatellites(),
+        loadCommunications(),
+        loadMissions(),
+        loadAlertes(),
+        loadHistorique(),
+      ]);
     }
 
     async function refreshSession() {
       const { ok, data } = await apiCall("/api/auth", "GET", "/me");
       updateSessionUI(data, ok);
-      if (ok) await loadSatellites();
+      if (ok) {
+        await loadAllFront();
+        if (canAccessBack) await loadAllBack();
+      }
       return ok;
     }
 
@@ -560,13 +1453,116 @@
       updateSessionUI(data, ok);
       if (ok) {
         els.password.value = "";
-        await loadSatellites();
+        await loadAllFront();
+        if (canAccessBack) await loadAllBack();
       }
     });
 
     els.btnMe.addEventListener("click", refreshSession);
-
+    els.btnRefreshAll.addEventListener("click", loadAllFront);
+    els.btnRefreshBack.addEventListener("click", loadAllBack);
     els.btnSatellites.addEventListener("click", loadSatellites);
+    els.btnCommunications.addEventListener("click", loadCommunications);
+    els.btnMissions.addEventListener("click", loadMissions);
+    els.btnAlertes.addEventListener("click", loadAlertes);
+    els.btnHistorique.addEventListener("click", loadHistorique);
+    els.btnFilterHistorique.addEventListener("click", loadHistorique);
+    els.btnBo05Load.addEventListener("click", loadBo05Instruments);
+    els.bo05Satellite.addEventListener("change", loadBo05Instruments);
+
+    els.tabFront.addEventListener("click", () => setActiveView("front"));
+    els.tabBack.addEventListener("click", () => setActiveView("back"));
+
+    els.bo01Form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = els.bo01Satellite.value;
+      const statut = els.bo01Statut.value;
+      const { ok, data } = await apiCall("/api", "POST", `/satellites/${id}/statut`, { statut });
+      if (ok) {
+        showFlash(data.message || "Statut mis à jour.", "success");
+        await loadBackSatellites();
+        await loadSatellites();
+      } else {
+        showFlash(data?.error || "Échec de la mise à jour.", "error");
+      }
+    });
+
+    els.bo02Form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        id_satellite: els.bo02Satellite.value,
+        id_station: els.bo02Station.value,
+        date_heure_debut: toApiDatetime(els.bo02Debut.value),
+        duree_secondes: Number(els.bo02Duree.value),
+        elevation_max: Number(els.bo02Elevation.value),
+      };
+      const { ok, data } = await apiCall("/api", "POST", "/fenetres", body);
+      if (ok) {
+        showFlash(
+          `${data.message || "Fenêtre planifiée."}${data.id_fenetre ? ` (ID ${data.id_fenetre})` : ""}`,
+          "success"
+        );
+        await loadHistorique();
+      } else {
+        showFlash(data?.error || "Échec de la planification.", "error");
+      }
+    });
+
+    els.bo03Form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        id_satellite: els.bo03Satellite.value,
+        id_mission: els.bo03Mission.value,
+        role_satellite: els.bo03Role.value.trim(),
+      };
+      const { ok, data } = await apiCall("/api", "POST", "/participations", body);
+      if (ok) {
+        showFlash(data.message || "Satellite assigné.", "success");
+        els.bo03Role.value = "";
+        await loadMissions();
+      } else {
+        showFlash(data?.error || "Échec de l'assignation.", "error");
+      }
+    });
+
+    els.bo04Form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = els.bo04Satellite.value;
+      const nom = els.bo04Satellite.selectedOptions[0]?.textContent || id;
+      if (!confirm(`Êtes-vous sûr de vouloir désorbiter ${nom} ?\nCette action est destructive.`)) {
+        return;
+      }
+      const { ok, data } = await apiCall("/api", "POST", `/satellites/${id}/desorbiter`, { confirm: true });
+      if (ok) {
+        const extra = data.fenetres_annulees != null
+          ? ` — ${data.fenetres_annulees} fenêtre(s) annulée(s).`
+          : "";
+        showFlash((data.message || "Satellite désorbité.") + extra, "success");
+        await loadAllBack();
+        await loadSatellites();
+      } else {
+        showFlash(data?.error || "Échec de la désorbitation.", "error");
+      }
+    });
+
+    els.bo05AddForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const idSat = els.bo05Satellite.value;
+      const body = {
+        id_satellite: idSat,
+        id_instrument: els.bo05IdInstrument.value.trim(),
+        etat_fonctionnement: els.bo05Etat.value,
+      };
+      const { ok, data } = await apiCall("/api", "POST", "/embarquements", body);
+      if (ok) {
+        showFlash(data.message || "Instrument embarqué.", "success");
+        els.bo05IdInstrument.value = "";
+        await loadBo05Instruments();
+        await loadAlertes();
+      } else {
+        showFlash(data?.error || "Échec de l'embarquement.", "error");
+      }
+    });
 
     els.btnLogout.addEventListener("click", async () => {
       await apiCall("/api/auth", "POST", "/logout");

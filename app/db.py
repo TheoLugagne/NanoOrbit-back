@@ -46,3 +46,22 @@ def query(username: str, password: str, sql: str, params=None) -> list[dict]:
             cursor.close()
     finally:
         conn.close()
+
+
+def execute(username: str, password: str, sql: str, params=None) -> dict:
+    conn = get_connection(username, password)
+    try:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(sql, params or ())
+            rows = cursor.fetchall() if cursor.with_rows else []
+            conn.commit()
+            return {
+                "lastrowid": cursor.lastrowid,
+                "rowcount": cursor.rowcount,
+                "rows": rows,
+            }
+        finally:
+            cursor.close()
+    finally:
+        conn.close()

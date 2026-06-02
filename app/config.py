@@ -9,13 +9,18 @@ def _parse_cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "").strip()
     if raw:
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return [
+
+    origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "https://nano-orbite.tlugagne.live",
         "http://nano-orbite.tlugagne.live",
     ]
+    front = os.getenv("FRONTEND_ORIGIN", "").strip()
+    if front and front not in origins:
+        origins.append(front)
+    return origins
 
 
 class Config:

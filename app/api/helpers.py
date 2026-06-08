@@ -11,6 +11,10 @@ _CONSTRAINT_ERRORS = frozenset({1062, 3819, 4025, 1690})
 _RG_I03_DUPLICATE = re.compile(
     r"Duplicate entry '([^']+)' for key 'uk_rg_i03_ref_instrument'"
 )
+_EMBARQUE_PK_DUPLICATE = re.compile(
+    r"Duplicate entry '([^']+)' for key 'PRIMARY'"
+)
+_EMBARQUE_PK_ENTRY = re.compile(r"^(SAT-\d{3})-(?!MSN-)(.+)$")
 _RG_I03_MESSAGE = (
     "RG-I03 : cet instrument est déjà embarqué sur un autre satellite."
 )
@@ -52,6 +56,16 @@ def _constraint_error_message(error: Error) -> str | None:
 
     if "uk_rg_i03_ref_instrument" in msg:
         return _RG_I03_MESSAGE
+
+    pk_match = _EMBARQUE_PK_DUPLICATE.search(msg)
+    if pk_match:
+        entry_match = _EMBARQUE_PK_ENTRY.match(pk_match.group(1))
+        if entry_match:
+            id_satellite, ref_instrument = entry_match.groups()
+            return (
+                f"L'instrument « {ref_instrument} » est déjà embarqué "
+                f"sur le satellite « {id_satellite} »."
+            )
 
     return None
 

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from app.api.helpers import db_execute, db_query
+from app.api.helpers import db_execute, db_query, embarquement_conflict_message
 from app.middleware.auth import back_office_required, login_required, role_required
 
 back_bp = Blueprint("back", __name__)
@@ -349,6 +349,27 @@ def create_embarquement():
         return jsonify(error="Satellite et instrument requis"), 400
     if etat not in _INSTRUMENT_ETATS:
         return jsonify(error="État de fonctionnement invalide"), 400
+
+    existing, err = db_query(
+        """
+        SELECT id_satellite
+        FROM EMBARQUE
+        WHERE ref_instrument = %s
+        LIMIT 1
+        """,
+        (ref_instrument,),
+        error_message="Erreur lors de la vérification de l'instrument",
+    )
+    if err:
+        return err
+    if existing:
+        return jsonify(
+            error=embarquement_conflict_message(
+                ref_instrument=ref_instrument,
+                id_satellite=id_satellite,
+                other_satellite=existing[0]["id_satellite"],
+            )
+        ), 400
 
     _, err = db_execute(
         """

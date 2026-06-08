@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from app.api.helpers import db_execute, db_query
 from app.middleware.auth import back_office_required, login_required, role_required
@@ -138,6 +138,10 @@ def update_satellite_statut(id_satellite):
     statut = (data.get("statut") or "").strip()
     if statut not in _SATELLITE_STATUTS:
         return jsonify(error="Statut invalide"), 400
+    if statut == "Désorbité" and session.get("role") != "admin":
+        return jsonify(
+            error="Action refusée : seul admin_nano peut désorbiter un satellite."
+        ), 403
 
     rows, err = db_query(
         "SELECT id_satellite FROM SATELLITE WHERE id_satellite = %s",
